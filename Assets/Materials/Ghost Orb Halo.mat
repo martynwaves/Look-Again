@@ -26,13 +26,13 @@ Material:
     m_TexEnvs: []
     m_Ints: []
     m_Floats:
-    - _Brightness: 1.1
+    - _Brightness: 0.5
     - _FaceEye: 1
     - _Falloff: 2.2
     - _Pulse: 0.2
     - _PulseSpeed: 0.6
     - _RingSpeed: 0.25
-    - _Rings: 0.35
+    - _Rings: 0.12
     - _UseVertexColor: 0
     m_Colors:
     - _Color: {r: 0.22, g: 0.45, b: 0.8, a: 1}

@@ -1,4 +1,4 @@
-// Walks the player with WASD, fades the view to black while their head is in a wall or out of the play area,
+// Walks the player with WASD (running while Shift is held), fades the view to black while their head is in a wall or out of the play area,
 // and quits on Esc in builds.
 
 using Unity.XR.CoreUtils;
@@ -16,6 +16,9 @@ public class Player : MonoBehaviour
 
     [Tooltip("WASD walking speed, in meters per second.")]
     [SerializeField] float moveSpeed = 1.5f;
+
+    [Tooltip("Speed while Shift is held, in meters per second.")]
+    [SerializeField] float runSpeed = 3f;
 
     [Header("Fade")]
     [Tooltip("How close the head may come to walls and furniture before the view fades, in meters.")]
@@ -77,7 +80,8 @@ public class Player : MonoBehaviour
         Transform head = origin.Camera.transform;
         Vector3 forward = Vector3.ProjectOnPlane(head.forward, Vector3.up).normalized;
         Vector3 right = Vector3.ProjectOnPlane(head.right, Vector3.up).normalized;
-        controller.Move((forward * input.y + right * input.x) * moveSpeed * Time.deltaTime);
+        float speed = keyboard.shiftKey.isPressed ? runSpeed : moveSpeed;
+        controller.Move((forward * input.y + right * input.x) * speed * Time.deltaTime);
     }
 
     // Whether the head has left the play area or gone into a wall or furniture (things that can be picked up don't count)

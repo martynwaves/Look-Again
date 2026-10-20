@@ -47,7 +47,7 @@ Material:
     - _Radius: 0.06
     - _RimWidth: 0.014
     - _ScratchBlack: 0.1
-    - _ScratchOpacity: 0.01
+    - _ScratchOpacity: 0.002
     - _Vignette: 0.7
     m_Colors:
     - _BodyColor: {r: 0.09999997, g: 0.089999996, b: 0.079999976, a: 1}
