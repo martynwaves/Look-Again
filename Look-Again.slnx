@@ -1,5 +1,4 @@
 ﻿<Solution>
-<<<<<<< Updated upstream
   <Project Path="Unity.XR.Interaction.Toolkit.Samples.SpatialKeyboard.csproj" />
   <Project Path="Assembly-CSharp.csproj" />
   <Project Path="Unity.XR.Interaction.Toolkit.Samples.SpatialKeyboard.Editor.csproj" />
@@ -12,12 +11,5 @@
   <Project Path="Unity.XR.Hands.Samples.HandCapture.Editor.csproj" />
   <Project Path="Unity.XR.Interaction.Toolkit.Samples.InteractionSimulator.Editor.csproj" />
   <Project Path="Unity.XR.Hands.Samples.VisualizerSample.csproj" />
-=======
-  <Project Path="Assembly-CSharp.csproj" />
-  <Project Path="Unity.XR.Interaction.Toolkit.Samples.StarterAssets.csproj" />
-  <Project Path="Unity.XR.Interaction.Toolkit.Samples.InteractionSimulator.csproj" />
-  <Project Path="LookAgain.Dev.csproj" />
-  <Project Path="Unity.XR.Interaction.Toolkit.Samples.InteractionSimulator.Editor.csproj" />
->>>>>>> Stashed changes
   <Project Path="Unity.XR.Interaction.Toolkit.Samples.StarterAssets.Editor.csproj" />
 </Solution>
