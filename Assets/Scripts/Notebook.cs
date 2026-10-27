@@ -1,14 +1,10 @@
-// The notebook: raising it shows the objectives and the current objective's hint.
-
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Serialization;
 
-public class Notebook : HeldTool
+public class Notebook : MonoBehaviour
 {
-    static readonly int OpenId = Shader.PropertyToID("_Open");
-
     static Notebook instance;
 
     [System.Serializable]
@@ -18,13 +14,6 @@ public class Notebook : HeldTool
         [TextArea] public string hintDescription;
     }
 
-    [Header("Notebook")]
-    [SerializeField] Transform notebookTransform;
-    [SerializeField] MeshRenderer notebookMesh;
-    [SerializeField] float raiseDrop = 0.25f;
-    [Tooltip("How wide the notebook looks in a headset, in degrees. Narrower than the view, so both eyes see its edges.")]
-    [SerializeField] float headsetWidth = 70f;
-
     [Header("Pages")]
     [Tooltip("Page text for the current objective's hint.")]
     [SerializeField, FormerlySerializedAs("leftPageHintText")] TMP_Text hintText;
@@ -32,48 +21,30 @@ public class Notebook : HeldTool
     [SerializeField, FormerlySerializedAs("rightPageObjectivesText")] TMP_Text objectivesText;
     [SerializeField] List<Objective> objectives = new();
 
-    MaterialPropertyBlock notebookBlock;
-    float bookWidth;
     int currentObjectiveIndex;
 
-    public Notebook() : base("Notebook", "<XRController>{RightHand}/primaryButton", "A", "<Keyboard>/g") { }
-
-    protected override void Awake()
+    void Awake()
     {
-        base.Awake();
-        instance = this;
-        if (notebookTransform == null) notebookTransform = transform;
-        notebookBlock = new MaterialPropertyBlock();
-        if (notebookMesh != null) bookWidth = notebookMesh.transform.localScale.x * notebookMesh.GetComponent<MeshFilter>().sharedMesh.bounds.size.x;
-    }
-
-    // The page texts are children of the notebook, so they rise, fall and hide with it
-    protected override void LayOut(float eased)
-    {
-        bool shown = eased > 0f;
-        if (notebookTransform.gameObject.activeSelf != shown) notebookTransform.gameObject.SetActive(shown);
-        if (!shown) return;
-
-        float scale = Headset && bookWidth > 0f ? 2f * distance * Mathf.Tan(headsetWidth * 0.5f * Mathf.Deg2Rad) / bookWidth : 1f;
-        notebookTransform.localScale = Vector3.one * scale;
-        notebookTransform.localPosition = new Vector3(0f, -(1f - eased) * raiseDrop * scale, distance);
-        if (notebookMesh != null)
+        if (instance == null)
         {
-            notebookMesh.GetPropertyBlock(notebookBlock);
-            notebookBlock.SetFloat(OpenId, eased);
-            notebookMesh.SetPropertyBlock(notebookBlock);
+            instance = this;
         }
-        UpdatePages(eased);
+        else
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        UpdatePages();
     }
 
-    void UpdatePages(float alpha)
+    void UpdatePages()
     {
         bool done = currentObjectiveIndex >= objectives.Count;
 
         if (hintText != null)
         {
             hintText.text = done ? "<b>HINTS</b>\n\nNo more objectives." : $"<b>HINT</b>\n\n{objectives[currentObjectiveIndex].hintDescription}";
-            hintText.alpha = alpha;
         }
 
         if (objectivesText != null)
@@ -89,11 +60,9 @@ public class Notebook : HeldTool
                 else text += $"- {description}\n";
             }
             objectivesText.text = text;
-            objectivesText.alpha = alpha;
         }
     }
 
-    // Marks the current objective done and moves on to the next
     public static void CompleteCurrentObjective()
     {
         if (instance == null)
@@ -107,6 +76,6 @@ public class Notebook : HeldTool
             return;
         }
         instance.currentObjectiveIndex++;
-        instance.UpdatePages(instance.Raised);
+        instance.UpdatePages();
     }
 }
