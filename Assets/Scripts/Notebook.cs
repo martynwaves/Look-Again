@@ -3,7 +3,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.Serialization;
 
-public class Notebook : HeldTool
+public class Notebook : MonoBehaviour
 {
     static Notebook instance;
 
@@ -14,14 +14,6 @@ public class Notebook : HeldTool
         [TextArea] public string hintDescription;
     }
 
-    [Header("Notebook")]
-    [SerializeField] Transform notebookTransform;
-    [Tooltip("The physical BookBasicOpen object from the scene.")]
-    [SerializeField] Transform bookBasicOpenTransform;
-    [SerializeField] float raiseDrop = 0.25f;
-    [Tooltip("How wide the notebook looks in a headset, in degrees. Narrower than the view, so both eyes see its edges.")]
-    [SerializeField] float headsetWidth = 70f;
-
     [Header("Pages")]
     [Tooltip("Page text for the current objective's hint.")]
     [SerializeField, FormerlySerializedAs("leftPageHintText")] TMP_Text hintText;
@@ -29,59 +21,30 @@ public class Notebook : HeldTool
     [SerializeField, FormerlySerializedAs("rightPageObjectivesText")] TMP_Text objectivesText;
     [SerializeField] List<Objective> objectives = new();
 
-    float bookWidth;
     int currentObjectiveIndex;
 
-    public Notebook() : base("Notebook", "<XRController>{RightHand}/primaryButton", "A", "<Keyboard>/g") { }
-
-    protected override void Awake()
+    void Awake()
     {
-        base.Awake();
-        instance = this;
-        if (notebookTransform == null) notebookTransform = transform;
-
-        if (bookBasicOpenTransform != null)
+        if (instance == null)
         {
-            MeshRenderer bookMesh = bookBasicOpenTransform.GetComponentInChildren<MeshRenderer>();
-            if (bookMesh != null)
-            {
-                bookWidth = bookMesh.transform.localScale.x * bookMesh.GetComponent<MeshFilter>().sharedMesh.bounds.size.x;
-            }
+            instance = this;
         }
+        else
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        UpdatePages();
     }
 
-    protected override void LayOut(float eased)
-    {
-        bool shown = eased > 0f;
-
-        // Toggle visibility of your physical BookBasicOpen object instead of using shader property blocks
-        if (bookBasicOpenTransform != null)
-        {
-            if (bookBasicOpenTransform.gameObject.activeSelf != shown)
-                bookBasicOpenTransform.gameObject.SetActive(shown);
-        }
-        else if (notebookTransform.gameObject.activeSelf != shown)
-        {
-            notebookTransform.gameObject.SetActive(shown);
-        }
-
-        if (!shown) return;
-
-        float scale = Headset && bookWidth > 0f ? 2f * distance * Mathf.Tan(headsetWidth * 0.5f * Mathf.Deg2Rad) / bookWidth : 1f;
-        notebookTransform.localScale = Vector3.one * scale;
-        notebookTransform.localPosition = new Vector3(0f, -(1f - eased) * raiseDrop * scale, distance);
-
-        UpdatePages(eased);
-    }
-
-    void UpdatePages(float alpha)
+    void UpdatePages()
     {
         bool done = currentObjectiveIndex >= objectives.Count;
 
         if (hintText != null)
         {
             hintText.text = done ? "<b>HINTS</b>\n\nNo more objectives." : $"<b>HINT</b>\n\n{objectives[currentObjectiveIndex].hintDescription}";
-            hintText.alpha = alpha;
         }
 
         if (objectivesText != null)
@@ -97,7 +60,6 @@ public class Notebook : HeldTool
                 else text += $"- {description}\n";
             }
             objectivesText.text = text;
-            objectivesText.alpha = alpha;
         }
     }
 
@@ -114,6 +76,6 @@ public class Notebook : HeldTool
             return;
         }
         instance.currentObjectiveIndex++;
-        instance.UpdatePages(instance.Raised);
+        instance.UpdatePages();
     }
 }
