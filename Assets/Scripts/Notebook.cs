@@ -1,9 +1,11 @@
+// The notebook: a real book the player carries, its pages showing the current hint and the objectives. It opens while read and shuts otherwise.
+// In a headset it's read by holding it up; on a monitor a key takes it up in front of the eyes.
+
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
-using UnityEngine.Serialization;
 
-public class Notebook : MonoBehaviour
+public class Notebook : HeldTool
 {
     static Notebook instance;
 
@@ -14,28 +16,67 @@ public class Notebook : MonoBehaviour
         [TextArea] public string hintDescription;
     }
 
+    [Header("Book")]
+    [Tooltip("Where the book is held while read from the keyboard, raised in front of the eyes.")]
+    [SerializeField] Transform viewfinder;
+    [Tooltip("How far below the eyes the book starts as it's raised, in meters.")]
+    [SerializeField] float raiseDrop = 0.15f;
+    [Tooltip("How the book is turned while read from the keyboard, so its pages face the eyes.")]
+    [SerializeField] Vector3 readingRotation = new(-15f, 180f, 0f);
+    [Tooltip("How close to the eyes a held book must be to open, in meters. It shuts again a little further out than this.")]
+    [SerializeField] float readingDistance = 0.6f;
+
     [Header("Pages")]
     [Tooltip("Page text for the current objective's hint.")]
-    [SerializeField, FormerlySerializedAs("leftPageHintText")] TMP_Text hintText;
+    [SerializeField] TMP_Text hintText;
     [Tooltip("Page text for the objectives list.")]
-    [SerializeField, FormerlySerializedAs("rightPageObjectivesText")] TMP_Text objectivesText;
+    [SerializeField] TMP_Text objectivesText;
     [SerializeField] List<Objective> objectives = new();
 
     int currentObjectiveIndex;
+    BookFold book;
+    bool nearEyes;
 
-    void Awake()
+    public Notebook() : base("Notebook", "<Keyboard>/b") { }
+
+    protected override Transform RaisedAnchor => viewfinder;
+    protected override Quaternion RaisedRotation => Quaternion.Euler(readingRotation);
+
+    protected override void Awake()
     {
-        if (instance == null)
-        {
-            instance = this;
-        }
-        else
+        if (instance != null && instance != this)
         {
             Destroy(gameObject);
             return;
         }
+        instance = this;
 
+        base.Awake();
+        if (item != null) book = item.GetComponent<BookFold>();
         UpdatePages();
+    }
+
+    protected override void LayOut(float eased)
+    {
+        if (viewfinder != null) viewfinder.localPosition = new Vector3(0f, -(1f - eased) * raiseDrop, distance);
+        // Open while read: taken up from the keyboard, or held in a hand or ray close to the eyes, but not over a belt slot
+        if (book != null) book.Open = TakenOut || InHand && !OverBelt() && NearEyes();
+    }
+
+    bool OverBelt()
+    {
+        foreach (var slot in item.interactorsHovering)
+            if (slot is BeltSlot) return true;
+        return false;
+    }
+
+    // Whether the book is close enough to the eyes to read, a little further once it's open so it doesn't flicker at the edge
+    bool NearEyes()
+    {
+        if (View == null) return false;
+        float reach = Vector3.Distance(item.transform.position, View.transform.position);
+        nearEyes = reach < readingDistance * (nearEyes ? 1.25f : 1f);
+        return nearEyes;
     }
 
     void UpdatePages()

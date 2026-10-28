@@ -1,39 +1,38 @@
-// Shared by the notebook and the spectral camera: a button raises the tool in front of the eyes,
-// and its corner icon shows while every tool is lowered. In a headset the tool floats in the world and turns after the head.
+// Shared by the notebook and the spectral camera, each a real item the player carries in either hand or on their belt.
+// On a keyboard a key takes the item up in front of the eyes and back, and its corner icon shows while the player has it.
 
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using UnityEngine.Serialization;
+using UnityEngine.XR.Interaction.Toolkit.Interactables;
+using UnityEngine.XR.Interaction.Toolkit.Interactors;
 
 public abstract class HeldTool : MonoBehaviour
 {
     static readonly int AlphaId = Shader.PropertyToID("_Alpha");
     static readonly List<HeldTool> enabledTools = new();
 
-    [Header("Buttons")]
-    [SerializeField] InputAction headsetButton;
-    [Tooltip("The headset button's name, as the hint shows it.")]
-    [SerializeField] string headsetButtonName;
+    [Header("Item")]
+    [Tooltip("The tool itself, which the player picks up, puts down, passes between hands and carries on their belt.")]
+    [SerializeField] protected XRGrabInteractable item;
+
+    [Header("Keyboard")]
     [SerializeField] InputAction keyboardKey;
-    [Tooltip("On a keyboard, a tap toggles the tool instead of the key being held.")]
+    [Tooltip("A tap toggles the tool instead of the key being held.")]
     [SerializeField] bool keyboardTaps = true;
 
     [Header("Raising")]
     [SerializeField] protected float distance = 0.5f;
-    [SerializeField, FormerlySerializedAs("openTime")] float raiseTime = 0.18f;
-    [SerializeField, FormerlySerializedAs("closeTime")] float lowerTime = 0.12f;
+    [SerializeField] float raiseTime = 0.18f;
+    [SerializeField] float lowerTime = 0.12f;
 
     [Header("Icon")]
-    [SerializeField, FormerlySerializedAs("icon1"), FormerlySerializedAs("icon2")] MeshRenderer icon;
-    [SerializeField, FormerlySerializedAs("iconHint1"), FormerlySerializedAs("hint2")] TMP_Text hint;
-    [SerializeField] Vector2 iconAngles = new(32f, 27f);
-    [SerializeField] Vector2 iconOnScreen = new(0.86f, 0.72f);
-    [SerializeField] float iconSize = 4.5f;
+    [Tooltip("The corner icon, placed in the scene; this only fades it in and out.")]
+    [SerializeField] MeshRenderer icon;
+    [Tooltip("The key hint under the icon, written in the scene; this only fades it with the icon.")]
+    [SerializeField] TMP_Text hint;
     [SerializeField, Range(0f, 1f)] float iconAlpha = 0.6f;
-    [Tooltip("How far away the icon floats, in meters. It keeps its size in view; far enough away, it doesn't double in a headset while the eyes look past it.")]
-    [SerializeField] float iconDistance = 1.5f;
 
     [Header("Headset")]
     [Tooltip("How quickly the tool turns after the head while lowered. Lower trails further behind.")]
@@ -48,47 +47,88 @@ public abstract class HeldTool : MonoBehaviour
     protected Camera View => view;
     protected TMP_Text Hint => hint;
 
+    // Whether the player has the item with them: in a hand, on the belt, or taken up from the keyboard
+    protected bool InReach => item != null && item.isSelected && OnPlayer(item.firstInteractorSelecting);
+
+    // Whether one of the player's hands holds the item
+    protected bool InHand => item != null && item.isSelected && item.firstInteractorSelecting is not XRSocketInteractor && OnPlayer(item.firstInteractorSelecting);
+
+    // Where the item sits while taken up from the keyboard, and how it's turned there
+    protected abstract Transform RaisedAnchor { get; }
+    protected virtual Quaternion RaisedRotation => Quaternion.identity;
+
     // Whether the corner icon is wanted at all
-    protected virtual bool ShowsIcon => true;
+    protected virtual bool ShowsIcon => !headset && InReach;
 
     Camera view;
+    Transform rig;
+    XRSocketInteractor raisedSlot;
+    IXRSelectInteractor returnTo;
     MaterialPropertyBlock iconBlock;
     float raised;
-    bool headset, tappedOpen;
-    bool? hintForHeadset;
+    bool headset, tappedOpen, tookOut;
 
-    protected HeldTool(string name, string headsetBinding, string headsetButtonName, string keyboardBinding)
+    // Whether the item is up in front of the eyes, taken there from the keyboard
+    protected bool TakenOut => raisedSlot != null && raisedSlot.IsSelecting(item);
+
+    protected HeldTool(string name, string keyboardBinding)
     {
-        headsetButton = new($"{name} (headset)", InputActionType.Button, headsetBinding);
-        this.headsetButtonName = headsetButtonName;
         keyboardKey = new($"{name} (keyboard)", InputActionType.Button, keyboardBinding);
     }
 
     protected virtual void Awake()
     {
         view = GetComponentInParent<Camera>();
+        rig = view != null ? view.transform.root : null;
         iconBlock = new MaterialPropertyBlock();
+        if (item == null) return;
+
+        // The player walks through what they carry rather than being stopped by it
+        CharacterController body = rig != null ? rig.GetComponentInChildren<CharacterController>() : null;
+        if (body != null)
+            foreach (Collider part in item.GetComponentsInChildren<Collider>()) Physics.IgnoreCollision(body, part);
+
+        // Taken up from the keyboard, a trigger-less slot in front of the eyes holds the item, so it glides there and a hand can still take it
+        if (RaisedAnchor == null) return;
+        GameObject slot = new($"{name} (raised slot)");
+        slot.transform.SetParent(RaisedAnchor, false);
+        slot.transform.localRotation = RaisedRotation;
+        BeltSlot raising = slot.AddComponent<BeltSlot>();
+        raising.HoldsByMiddle = false;
+        raising.showInteractableHoverMeshes = false;
+        raisedSlot = raising;
     }
 
     protected virtual void OnEnable()
     {
-        headsetButton.Enable();
         keyboardKey.Enable();
         enabledTools.Add(this);
     }
 
     protected virtual void OnDisable()
     {
-        headsetButton.Disable();
         keyboardKey.Disable();
         enabledTools.Remove(this);
         Raised = 0f;
     }
 
+    bool OnPlayer(IXRSelectInteractor interactor) => rig != null && interactor.transform.IsChildOf(rig);
+
     void Update()
     {
         headset = UnityEngine.XR.XRSettings.isDeviceActive;
+        // A hand took the item from in front of the eyes, so it's no longer the keyboard's to put back
+        if (tookOut && !TakenOut)
+        {
+            tookOut = false;
+            tappedOpen = false;
+            returnTo = null;
+        }
+
+        // The item glides up as soon as it's asked for and back as soon as it isn't, rather than first dropping out of view
         bool open = WantsRaised();
+        if (open && !tookOut && !headset) TakeOut();
+        else if (!open && tookOut) PutBack();
         float step = Time.deltaTime / Mathf.Max(open ? raiseTime : lowerTime, 0.001f);
         raised = Mathf.MoveTowards(raised, open ? 1f : 0f, step);
         Raised = 1f - (1f - raised) * (1f - raised) * (1f - raised);
@@ -97,13 +137,34 @@ public abstract class HeldTool : MonoBehaviour
         LayOutIcon();
     }
 
-    // Whether the player is asking for the tool this frame: the headset button, or the keyboard key held or tapped
+    // Whether the player is asking for the tool this frame: on a keyboard, its key held or tapped while they have the item
     protected virtual bool WantsRaised()
     {
-        if (headset) return headsetButton.IsPressed();
+        if (headset || !InReach) return tappedOpen = false;
         if (!keyboardTaps) return keyboardKey.IsPressed();
         if (keyboardKey.WasPressedThisFrame()) tappedOpen = !tappedOpen;
         return tappedOpen;
+    }
+
+    // Takes the item from the belt or a hand up to the eyes, remembering where it came from
+    void TakeOut()
+    {
+        if (item == null || raisedSlot == null || raisedSlot.hasSelection) return;
+        returnTo = item.isSelected ? item.firstInteractorSelecting : null;
+        if (returnTo != null) item.interactionManager.SelectExit(returnTo, item);
+        item.interactionManager.SelectEnter((IXRSelectInteractor)raisedSlot, (IXRSelectInteractable)item);
+        tookOut = TakenOut;
+    }
+
+    // Puts the item on the belt (its home slot, else the slot it came from, else any free one, else it drops); never into a hand, which would leave it hanging at the eyes
+    void PutBack()
+    {
+        tookOut = false;
+        XRSocketInteractor home = Belt.HomeOf(item);
+        IXRSelectInteractor to = Belt.IsFree(home) ? home : returnTo is XRSocketInteractor cameFrom && Belt.IsFree(cameFrom) ? cameFrom : Belt.FreeSlot();
+        returnTo = null;
+        item.interactionManager.SelectExit((IXRSelectInteractor)raisedSlot, (IXRSelectInteractable)item);
+        if (to != null) item.interactionManager.SelectEnter(to, item);
     }
 
     // Head-locked things feel stuck to the face in a headset and judder under reprojection, so there the tool eases after the head
@@ -143,6 +204,7 @@ public abstract class HeldTool : MonoBehaviour
         return Vector2.Scale(onScreen, new Vector2(up * view.aspect, up));
     }
 
+    // Fades the icon and its hint out while any tool is raised, leaving them where the scene puts them
     void LayOutIcon()
     {
         if (icon == null) return;
@@ -154,21 +216,10 @@ public abstract class HeldTool : MonoBehaviour
         if (icon.gameObject.activeSelf != shown) icon.gameObject.SetActive(shown);
         if (!shown) return;
 
-        Vector2 at = Direction(iconAngles, iconOnScreen);
-        icon.transform.localPosition = new Vector3(iconDistance * at.x, -iconDistance * at.y, iconDistance);
-        icon.transform.localScale = Vector3.one * (2f * iconDistance * Mathf.Tan(iconSize * 0.5f * Mathf.Deg2Rad));
-
         icon.GetPropertyBlock(iconBlock);
         iconBlock.SetFloat(AlphaId, alpha);
         icon.SetPropertyBlock(iconBlock);
 
-        if (hint == null) return;
-        if (hint.alpha != alpha) hint.alpha = alpha;
-        if (hintForHeadset != headset)
-        {
-            // The headset buttons are always held, while a keyboard tap may toggle
-            hint.text = headset ? $"Hold {headsetButtonName}" : $"{(keyboardTaps ? "Press" : "Hold")} {keyboardKey.GetBindingDisplayString()}";
-            hintForHeadset = headset;
-        }
+        if (hint != null && hint.alpha != alpha) hint.alpha = alpha;
     }
 }

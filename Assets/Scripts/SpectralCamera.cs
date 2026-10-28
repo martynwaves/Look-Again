@@ -1,5 +1,5 @@
 // The spectral camera: raising it opens a viewfinder that reveals spectral objects.
-// In a headset it's held in the right hand and looked through by bringing it to the eye; on a monitor a key raises it.
+// In a headset it's held in either hand and looked through by bringing it to the eye; on a monitor a key raises it.
 
 using TMPro;
 using UnityEngine;
@@ -26,9 +26,7 @@ public class SpectralCamera : HeldTool
     [SerializeField] float raiseDrop = 0.35f;
 
     [Header("Held Camera")]
-    [Tooltip("The camera in the right hand, facing the way it shoots. Left empty, the headset raises the viewfinder with a button instead.")]
-    [SerializeField] Transform heldCamera;
-    [Tooltip("Where the eye goes on the held camera, in its own space.")]
+    [Tooltip("Where the eye goes on the camera item, in its own space. The item faces the way it shoots.")]
     [SerializeField] Vector3 eyepiece = new(0f, 0.01f, -0.03f);
     [Tooltip("How close the eyepiece must come to the eye to look through it, in meters.")]
     [SerializeField] float lookDistance = 0.2f;
@@ -39,21 +37,31 @@ public class SpectralCamera : HeldTool
 
     MaterialPropertyBlock lensBlock, maskBlock;
     TMP_Text raiseTip;
-    bool looking, lookedThrough;
+    Renderer[] model;
+    ParticleSystem[] effects;
+    HeldItemMotion motion;
+    HandPoser hiddenHand;
+    bool looking, lookedThrough, modelShown = true;
 
-    public SpectralCamera() : base("Spectral Camera", "<XRController>{RightHand}/secondaryButton", "B", "<Keyboard>/f") { }
+    public SpectralCamera() : base("Spectral Camera", "<Keyboard>/f") { }
 
-    bool Held => Headset && heldCamera != null;
+    Transform HeldCamera => item != null ? item.transform : null;
 
-    // In a headset the camera in the hand shows where it is, so it needs no corner icon
-    protected override bool ShowsIcon => !Held;
+    bool Held => Headset && InHand;
+
+    // Taken up from the keyboard, the camera goes to the eye, where it's hidden
+    protected override Transform RaisedAnchor => transform;
 
     protected override void Awake()
     {
         base.Awake();
         lensBlock = new MaterialPropertyBlock();
         maskBlock = new MaterialPropertyBlock();
-        if (heldCamera != null) raiseTip = CreateTip(heldCamera);
+        if (HeldCamera == null) return;
+        model = HeldCamera.GetComponentsInChildren<Renderer>();
+        effects = HeldCamera.GetComponentsInChildren<ParticleSystem>();
+        motion = HeldCamera.GetComponent<HeldItemMotion>();
+        raiseTip = CreateTip(HeldCamera);
     }
 
     protected override void OnEnable()
@@ -68,30 +76,56 @@ public class SpectralCamera : HeldTool
         if (current == this) current = null;
     }
 
-    // In a headset, looking through means the eyepiece is at the eye and the camera points roughly where the head looks
+    // In a headset, looking through means the eyepiece near the eye, aimed roughly where the head looks; it's judged by the hand, as the camera settles on the eye
     protected override bool WantsRaised()
     {
-        if (!Held || View == null) return base.WantsRaised();
+        if (!Held || View == null)
+        {
+            looking = false;
+            if (motion != null) motion.EyePose = null;
+            return base.WantsRaised();
+        }
         Transform head = View.transform;
-        float reach = Vector3.Distance(heldCamera.TransformPoint(eyepiece), head.position);
-        bool aimed = Vector3.Dot(heldCamera.forward, head.forward) >= lookAlignment;
+        Pose hand = motion != null ? motion.HandPose : new Pose(HeldCamera.position, HeldCamera.rotation);
+        Vector3 eye = Vector3.Scale(eyepiece, HeldCamera.lossyScale);
+        float reach = Vector3.Distance(hand.position + hand.rotation * eye, head.position);
+        bool aimed = Vector3.Dot(hand.rotation * Vector3.forward, head.forward) >= lookAlignment;
         looking = aimed && reach <= (looking ? stopDistance : lookDistance);
         if (looking) lookedThrough = true;
+        if (motion != null) motion.EyePose = looking ? new Pose(head.position - head.rotation * eye, head.rotation) : (Pose?)null;
         return looking;
     }
 
     // While looking through, the viewfinder points where the held camera does
-    protected override Quaternion Facing(Transform head) => Held ? heldCamera.rotation : base.Facing(head);
+    protected override Quaternion Facing(Transform head) => Held ? HeldCamera.rotation : base.Facing(head);
 
     protected override void LayOut(float eased)
     {
         bool shown = eased > 0f;
-        if (heldCamera != null)
+        if (model != null)
         {
-            // Untracked hands sit at the eye, where the camera would block the view
-            bool atEye = View != null && Vector3.Distance(heldCamera.position, View.transform.position) < 0.08f;
-            bool modelShown = !shown && !atEye;
-            if (heldCamera.gameObject.activeSelf != modelShown) heldCamera.gameObject.SetActive(modelShown);
+            // At the eye (looked through, taken up from the keyboard, or held by an untracked hand) only its look is hidden, so it can still be grabbed
+            bool atEye = View != null && Vector3.Distance(HeldCamera.position, View.transform.position) < 0.08f;
+            bool show = !shown && !atEye;
+            if (modelShown != show)
+            {
+                modelShown = show;
+                foreach (Renderer part in model) part.enabled = show;
+                // Particles made while hidden at the eye would hang in front of it once shown again
+                foreach (ParticleSystem effect in effects)
+                {
+                    if (show) effect.Play();
+                    else effect.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+                }
+            }
+            // The hand holding it there would sit a few centimetres in front of the eyes, too close to focus on
+            HandPoser holding = !show && InHand ? HandPoser.Of(item.firstInteractorSelecting) : null;
+            if (holding != hiddenHand)
+            {
+                if (hiddenHand != null) hiddenHand.Shown = true;
+                hiddenHand = holding;
+                if (hiddenHand != null) hiddenHand.Shown = false;
+            }
         }
         LayOutTip();
         if (viewfinder.gameObject.activeSelf != shown) viewfinder.gameObject.SetActive(shown);

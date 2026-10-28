@@ -1,12 +1,14 @@
-// Without a headset, spawns the XR Interaction Simulator for mouse and keyboard play.
+// Without a headset, spawns the XR Interaction Simulator for mouse and keyboard play, its controllers starting where hands rest.
 // Also hides a few harmless log messages in the Editor, in and out of Play mode.
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.InputSystem.XR.Haptics;
+using UnityEngine.XR.Interaction.Toolkit.Inputs.Simulation;
 using Object = UnityEngine.Object;
 
 public static class DevSetup
@@ -14,6 +16,9 @@ public static class DevSetup
     const string SimulatorResourcePath = "XR Interaction Simulator";
     const string SimulatedControllerLayout = "XRSimulatedController";
     const float HeadsetStartTimeout = 10f;
+
+    // Where the simulated right controller starts, from the eyes (the left mirrors it): lower and wider, where hands rest
+    static readonly Vector3 SimulatedHandRest = new(0.17f, -0.06f, 0.4f);
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static async void StartSimulatorIfNoHeadset()
@@ -49,6 +54,21 @@ public static class DevSetup
         GameObject simulator = Object.Instantiate(prefab);
         simulator.name = prefab.name;
         Object.DontDestroyOnLoad(simulator);
+        RestSimulatedControllers(simulator);
+    }
+
+    // The simulator starts its controllers just under the eyes, which shows the hands huge and close; its starting poses are private
+    static void RestSimulatedControllers(GameObject simulator)
+    {
+        XRInteractionSimulator controls = simulator.GetComponentInChildren<XRInteractionSimulator>();
+        if (controls == null) return;
+        foreach ((string field, float side) in new[] { ("m_LeftControllerState", -1f), ("m_RightControllerState", 1f) })
+        {
+            FieldInfo state = typeof(XRInteractionSimulator).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic);
+            if (state?.GetValue(controls) is not XRSimulatedControllerState pose) continue;
+            pose.devicePosition = new Vector3(side * SimulatedHandRest.x, SimulatedHandRest.y, SimulatedHandRest.z);
+            state.SetValue(controls, pose);
+        }
     }
 
     // XR is initialised before the first scene loads, and OpenXR only keeps its display when it found a headset
