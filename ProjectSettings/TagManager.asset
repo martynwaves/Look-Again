@@ -45,8 +45,8 @@ TagManager:
   m_RenderingLayers:
   - Default
   - Chandelier
-  - Light Layer 2
-  - Light Layer 3
+  - Unlit by Lantern
+  - Ceiling
   - Light Layer 4
   - Light Layer 5
   - Light Layer 6

@@ -1,5 +1,5 @@
 // Poses a hand model on a controller: the grip curls the lower fingers, the trigger curls the index, and the hand closes around whatever it holds.
-// Works on a mirrored copy of the same hand too. Without a headset the hand tilts up to reach forward, as simulated controllers point dead ahead.
+// Works on a mirrored copy of the same hand too. Without a headset it tilts up to reach forward, and scripts can steer it off the controller onto something.
 
 using System.Collections.Generic;
 using UnityEngine;
@@ -38,6 +38,9 @@ public class HandPoser : MonoBehaviour
     [Tooltip("Degrees the hand tilts up about the controller without a headset, so it reaches forward instead of hanging from the wrist.")]
     [SerializeField] float keyboardTilt = 55f;
 
+    [Tooltip("Seconds the hand takes to move onto something steering it, and back to its controller.")]
+    [SerializeField] float steerTime = 0.25f;
+
     static readonly string[] Names = { "Thumb", "Index", "Middle", "Ring", "Pinky" };
     static readonly List<HandPoser> hands = new();
 
@@ -71,8 +74,25 @@ public class HandPoser : MonoBehaviour
     Pose placed;
     bool tilted;
 
-    void OnEnable() => hands.Add(this);
-    void OnDisable() => hands.Remove(this);
+    // The palm in this object's own space: its middle, the way it faces and the way the fingers point
+    Vector3 palmMiddle, palmFacing, palmFingers;
+
+    Transform steerSpace;
+    Vector3 steerAt, steerFacing, steerFingers;
+    float steerCurl, steered;
+    int steeredFrame = -10;
+
+    void OnEnable()
+    {
+        hands.Add(this);
+        Application.onBeforeRender += Place;
+    }
+
+    void OnDisable()
+    {
+        hands.Remove(this);
+        Application.onBeforeRender -= Place;
+    }
 
     void Awake()
     {
@@ -87,6 +107,11 @@ public class HandPoser : MonoBehaviour
         Vector3 across = Local(Find("IndexA").position - Find("PinkyA").position).normalized;
         Vector3 palm = Vector3.Cross(forward, across).normalized;
         if (Vector3.Dot(palm, Local(middleTip.position - middle.position)) < 0f) palm = -palm;
+
+        Matrix4x4 modelToHere = transform.worldToLocalMatrix * model.localToWorldMatrix;
+        palmFingers = modelToHere.MultiplyVector(forward).normalized;
+        palmFacing = modelToHere.MultiplyVector(palm).normalized;
+        palmMiddle = transform.InverseTransformPoint(wrist.position) + palmFingers * 0.055f + palmFacing * 0.015f;
 
         for (int f = 0; f < 5; f++)
         {
@@ -114,16 +139,25 @@ public class HandPoser : MonoBehaviour
 
     static float Read(InputActionProperty input) => input.action != null ? input.action.ReadValue<float>() : 0f;
 
+    // Steers the hand for this frame: its palm's middle to a point, facing one way with the fingers pointing another, all in some object's space.
+    // Once no longer steered it eases back onto its controller
+    public void Steer(Transform space, Vector3 palmAt, Vector3 facing, Vector3 fingersPoint, float curl)
+    {
+        steerSpace = space;
+        steerAt = palmAt;
+        steerFacing = facing;
+        steerFingers = fingersPoint;
+        steerCurl = curl;
+        steeredFrame = Time.frameCount;
+    }
+
+    bool Steering => Time.frameCount - steeredFrame <= 1 && steerSpace != null;
+
     void Update()
     {
         // Checked each frame, as a headset can take a few seconds to start
-        bool keyboard = !UnityEngine.XR.XRSettings.isDeviceActive;
-        if (keyboard != tilted)
-        {
-            tilted = keyboard;
-            Quaternion tilt = keyboard ? Quaternion.Euler(-keyboardTilt, 0f, 0f) : Quaternion.identity;
-            transform.SetLocalPositionAndRotation(tilt * placed.position, tilt * placed.rotation);
-        }
+        tilted = !UnityEngine.XR.XRSettings.isDeviceActive;
+        steered = Mathf.MoveTowards(steered, Steering ? 1f : 0f, Time.deltaTime / Mathf.Max(steerTime, 0.001f));
         if (fingers[0] == null) return;
         float pressGrip = Read(grip), pressTrigger = Read(trigger);
         float hold = interactor != null && interactor.hasSelection ? holdCurl : 0f;
@@ -131,7 +165,7 @@ public class HandPoser : MonoBehaviour
 
         for (int f = 0; f < 5; f++)
         {
-            float target = f switch
+            float target = Steering ? steerCurl : f switch
             {
                 0 => Mathf.Max(0.6f * pressGrip + 0.4f * pressTrigger, hold),
                 1 => Mathf.Max(pressTrigger, hold),
@@ -145,5 +179,25 @@ public class HandPoser : MonoBehaviour
                 joint.bone.localRotation = joint.rest * Quaternion.AngleAxis(full[j] * curls[f], joint.axis);
             }
         }
+    }
+
+    void LateUpdate() => Place();
+
+    // On its controller, blended toward wherever it's steered; again just before rendering, after whatever it's steered onto has moved
+    void Place()
+    {
+        Quaternion tilt = tilted ? Quaternion.Euler(-keyboardTilt, 0f, 0f) : Quaternion.identity;
+        transform.SetLocalPositionAndRotation(tilt * placed.position, tilt * placed.rotation);
+        if (steered <= 0f || steerSpace == null) return;
+
+        // Matches the palm's facing and fingers, through this object's scale, which mirrors the right hand
+        Vector3 scale = transform.localScale;
+        Quaternion own = Quaternion.LookRotation(Vector3.Scale(palmFingers, scale), Vector3.Scale(palmFacing, scale));
+        Quaternion wanted = Quaternion.LookRotation(steerSpace.TransformDirection(steerFingers), steerSpace.TransformDirection(steerFacing));
+        Quaternion rotation = wanted * Quaternion.Inverse(own);
+        Vector3 position = steerSpace.TransformPoint(steerAt) - rotation * Vector3.Scale(palmMiddle, scale);
+
+        float t = steered * steered * (3f - 2f * steered);
+        transform.SetPositionAndRotation(Vector3.Lerp(transform.position, position, t), Quaternion.Slerp(transform.rotation, rotation, t));
     }
 }

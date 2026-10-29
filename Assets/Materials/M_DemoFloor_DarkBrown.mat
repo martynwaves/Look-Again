@@ -25,6 +25,7 @@ Material:
   m_Parent: {fileID: 2100000, guid: b41d546237a4f2845b7f271bb6af256a, type: 2}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords:
+  - _ENVIRONMENTREFLECTIONS_OFF
   - _NORMALMAP
   - _OCCLUSIONMAP
   - _PARALLAXMAP
@@ -67,10 +68,11 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
+    - _EnvironmentReflections: 0
     - _Metallic: 0
     - _OcclusionStrength: 1
     - _Parallax: 0.007
-    - _Smoothness: 0.51
+    - _Smoothness: 0.25
     m_Colors: []
   m_BuildTextureStacks: []
   m_AllowLocking: 1

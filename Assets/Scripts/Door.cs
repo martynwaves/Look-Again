@@ -1,4 +1,4 @@
-// A hinged door the player swings by hand, either way: grabbed, it turns after the hand, and let go, it carries on and slows to a stop.
+// A hinged door the player swings by hand, either way: grabbed, it turns after the hand, and let go, it carries on and slows to a stop, clicking shut if it ends near closed.
 // The object's pivot is the hinge, and the door turns about its up axis. A locked door only rattles as it's pulled, until a script such as a hidden lever opens it.
 
 using UnityEngine;
@@ -32,6 +32,9 @@ public class Door : MonoBehaviour
 
     [Tooltip("Degrees the hand must pull a held locked door around its hinge to rattle it again.")]
     [SerializeField] float rattlePull = 4f;
+
+    [Tooltip("Let go within this many degrees of shut, swinging back or coming to rest, the door clicks shut.")]
+    [SerializeField] float latchAngle = 10f;
 
     public bool Locked
     {
@@ -91,6 +94,18 @@ public class Door : MonoBehaviour
         if (args.interactorObject != holder) return;
         holder = null;
         speed = Mathf.Clamp(speed, -360f, 360f);
+        Latch();
+    }
+
+    // Let go near shut, heading back or at rest, the door pulls the last bit closed
+    void Latch()
+    {
+        if (holder != null || swung < 1f || angle == 0f || Mathf.Abs(angle) >= latchAngle) return;
+        if (speed != 0f && Mathf.Sign(speed) == Mathf.Sign(angle)) return;
+        fromAngle = angle;
+        toAngle = 0f;
+        swung = 0f;
+        speed = 0f;
     }
 
     // Where the door was grabbed: the ray's hit for a grab from afar, the hand for one up close
@@ -169,13 +184,18 @@ public class Door : MonoBehaviour
         else if (speed != 0f)
         {
             speed *= Mathf.Exp(-friction * dt);
+            float before = angle;
             angle += speed * dt;
-            if (angle <= minAngle || angle >= maxAngle || Mathf.Abs(speed) < 2f)
+            // Swinging back through shut, it catches in the frame
+            if (before != 0f && Mathf.Sign(angle) != Mathf.Sign(before)) angle = speed = 0f;
+            else if (angle <= minAngle || angle >= maxAngle || Mathf.Abs(speed) < 2f)
             {
                 angle = Mathf.Clamp(angle, minAngle, maxAngle);
                 speed = 0f;
             }
         }
+
+        Latch();
 
         float shake = 0f;
         if (rattle > 0f)

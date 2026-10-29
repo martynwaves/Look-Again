@@ -1,10 +1,11 @@
-// Shared by the notebook and the spectral camera, each a real item the player carries in either hand or on their belt.
+// Shared by the notebook, the spectral camera and the lantern, each a real item the player carries in either hand or on their belt.
 // On a keyboard a key takes the item up in front of the eyes and back, and its corner icon shows while the player has it.
 
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
 using UnityEngine.XR.Interaction.Toolkit.Interactors;
 
@@ -62,8 +63,7 @@ public abstract class HeldTool : MonoBehaviour
 
     Camera view;
     Transform rig;
-    XRSocketInteractor raisedSlot;
-    IXRSelectInteractor returnTo;
+    XRSocketInteractor raisedSlot, lastSlot;
     MaterialPropertyBlock iconBlock;
     float raised;
     bool headset, tappedOpen, tookOut;
@@ -103,13 +103,21 @@ public abstract class HeldTool : MonoBehaviour
     {
         keyboardKey.Enable();
         enabledTools.Add(this);
+        if (item != null) item.selectEntered.AddListener(RememberSlot);
     }
 
     protected virtual void OnDisable()
     {
         keyboardKey.Disable();
         enabledTools.Remove(this);
+        if (item != null) item.selectEntered.RemoveListener(RememberSlot);
         Raised = 0f;
+    }
+
+    // The belt slot the item last sat in, which the keyboard puts it back into
+    void RememberSlot(SelectEnterEventArgs args)
+    {
+        if (args.interactorObject is BeltSlot slot && slot != raisedSlot) lastSlot = slot;
     }
 
     bool OnPlayer(IXRSelectInteractor interactor) => rig != null && interactor.transform.IsChildOf(rig);
@@ -122,7 +130,6 @@ public abstract class HeldTool : MonoBehaviour
         {
             tookOut = false;
             tappedOpen = false;
-            returnTo = null;
         }
 
         // The item glides up as soon as it's asked for and back as soon as it isn't, rather than first dropping out of view
@@ -146,23 +153,21 @@ public abstract class HeldTool : MonoBehaviour
         return tappedOpen;
     }
 
-    // Takes the item from the belt or a hand up to the eyes, remembering where it came from
+    // Takes the item from the belt or a hand up to the eyes
     void TakeOut()
     {
         if (item == null || raisedSlot == null || raisedSlot.hasSelection) return;
-        returnTo = item.isSelected ? item.firstInteractorSelecting : null;
-        if (returnTo != null) item.interactionManager.SelectExit(returnTo, item);
+        if (item.isSelected) item.interactionManager.SelectExit(item.firstInteractorSelecting, item);
         item.interactionManager.SelectEnter((IXRSelectInteractor)raisedSlot, (IXRSelectInteractable)item);
         tookOut = TakenOut;
     }
 
-    // Puts the item on the belt (its home slot, else the slot it came from, else any free one, else it drops); never into a hand, which would leave it hanging at the eyes
+    // Puts the item on the belt (the slot it last sat in, else its home slot, else any free one, else it drops); never into a hand, which would leave it hanging at the eyes
     void PutBack()
     {
         tookOut = false;
         XRSocketInteractor home = Belt.HomeOf(item);
-        IXRSelectInteractor to = Belt.IsFree(home) ? home : returnTo is XRSocketInteractor cameFrom && Belt.IsFree(cameFrom) ? cameFrom : Belt.FreeSlot();
-        returnTo = null;
+        IXRSelectInteractor to = Belt.IsFree(lastSlot) ? lastSlot : Belt.IsFree(home) ? home : Belt.FreeSlot();
         item.interactionManager.SelectExit((IXRSelectInteractor)raisedSlot, (IXRSelectInteractable)item);
         if (to != null) item.interactionManager.SelectEnter(to, item);
     }

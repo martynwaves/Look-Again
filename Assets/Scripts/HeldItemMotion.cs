@@ -1,5 +1,5 @@
 // Shapes how an item moves while a hand or ray holds it: newly taken, it eases over slowly (slower still out of a belt slot), it can be kept turned to face the eyes,
-// and held up to the eye it settles into place there. Dragged with the mouse on a monitor, it stays under the cursor. Slots place the item themselves.
+// and held up to the eye it settles into place there. Dragged with the mouse on a monitor, it stays under the cursor and the wheel moves it nearer or further.
 
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -22,6 +22,12 @@ public class HeldItemMotion : XRBaseGrabTransformer
 
     [Tooltip("Seconds the item takes to settle at the eye when held up to it, and to leave it again.")]
     [SerializeField] float eyeSnapTime = 0.15f;
+
+    [Tooltip("On a monitor, how much one notch of the mouse wheel moves a dragged item nearer or further, as a fraction of its distance.")]
+    [SerializeField] float scrollStep = 0.1f;
+
+    [Tooltip("How near and how far from the eyes the mouse wheel can move a dragged item, in meters.")]
+    [SerializeField] Vector2 scrollRange = new(0.3f, 3f);
 
     // Where the item should sit while held up to the eye, or null; set by whatever looks through it
     public Pose? EyePose { get; set; }
@@ -86,6 +92,14 @@ public class HeldItemMotion : XRBaseGrabTransformer
             cursorOffset = transform.position - pointed.GetPoint(cursorDistance);
         }
         underCursor = cursor;
+        // The mouse wheel draws it nearer or pushes it further along the cursor's line; right-click scrolling is the simulator's own
+        if (cursor && dynamic && !Mouse.current.rightButton.isPressed)
+        {
+            // One notch reads as 1, or as 120 on Windows when the input settings keep the platform's own range
+            bool uniform = InputSystem.settings.scrollDeltaBehavior == InputSettings.ScrollDeltaBehavior.UniformAcrossAllPlatforms;
+            float notches = Mouse.current.scroll.ReadValue().y / (uniform ? 1f : 120f);
+            if (notches != 0f) cursorDistance = Mathf.Clamp(cursorDistance * Mathf.Pow(1f + scrollStep, notches), scrollRange.x, scrollRange.y);
+        }
         if (cursor) targetPose.position = pointed.GetPoint(cursorDistance) + cursorOffset;
 
         if (faceEyes && view != null)

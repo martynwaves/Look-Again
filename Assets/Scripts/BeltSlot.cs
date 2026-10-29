@@ -95,10 +95,13 @@ public class BeltSlot : XRSocketInteractor
         slots.Remove(this);
     }
 
+    // Only things that can be carried go in a slot, not parts such as the lantern's crank
+    public override bool CanHover(IXRHoverInteractable interactable) => interactable is XRGrabInteractable && base.CanHover(interactable);
+
     // Only the nearest slot takes an item let go among several; one put here by a script is taken regardless
     public override bool CanSelect(IXRSelectInteractable interactable)
     {
-        return base.CanSelect(interactable) &&
+        return interactable is XRGrabInteractable && base.CanSelect(interactable) &&
             (IsSelecting(interactable) || interactable is not IXRHoverInteractable hoverable || !IsHovering(hoverable) || Nearest(hoverable));
     }
 
