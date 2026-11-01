@@ -12,10 +12,10 @@ public class Belt : MonoBehaviour
     [SerializeField] Transform head;
 
     [Tooltip("How far below the eyes the belt sits, in meters.")]
-    [SerializeField] float belowEyes = 0.65f;
+    [SerializeField] float belowEyes = 0.52f;
 
     [Tooltip("How far behind the eyes the body's middle is, in meters.")]
-    [SerializeField] float behindEyes = 0.08f;
+    [SerializeField] float behindEyes = 0.04f;
 
     [Tooltip("The same without a headset, where the hip slots would sit behind the view; negative hangs the belt ahead of the eyes.")]
     [SerializeField] float behindEyesOnMonitor = -0.12f;

@@ -1,4 +1,4 @@
-// Draws spectral objects only where the viewfinder's stencil mask is, faded in by how far the camera is raised.
+// Draws spectral objects where the viewfinder's stencil mask is, or across the whole view in a headset, faded in by how far the camera is raised.
 // The Scene view shows them everywhere.
 
 using System.Collections.Generic;
@@ -86,7 +86,7 @@ public class SpectralRenderFeature : ScriptableRendererFeature
             DrawingSettings drawing = RenderingUtils.CreateDrawingSettings(ShaderTags, renderingData, cameraData, lightData, sorting);
             RenderQueueRange queue = opaque ? RenderQueueRange.opaque : RenderQueueRange.transparent;
 
-            data.stencilComp = showAll ? CompareFunction.Always : CompareFunction.Equal;
+            data.stencilComp = showAll || SpectralCamera.FullView ? CompareFunction.Always : CompareFunction.Equal;
             data.reveal = showAll ? 1f : SpectralCamera.Reveal;
             data.first = renderGraph.CreateRendererList(new RendererListParams(renderingData.cullResults, drawing, new FilteringSettings(queue, feature.viewfinderLayers)));
             data.second = opaque

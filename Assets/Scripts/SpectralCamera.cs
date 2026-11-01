@@ -1,5 +1,5 @@
-// The spectral camera: raising it opens a viewfinder that reveals spectral objects.
-// In a headset it's held in either hand and looked through by bringing it to the eye; on a monitor a key raises it.
+// The spectral camera: on a monitor a key raises a viewfinder that reveals spectral objects inside its window.
+// In a headset, bringing it to the eye turns the whole view spectral while its frame fades away, and taking it away shuts the view dark for a moment.
 
 using TMPro;
 using UnityEngine;
@@ -9,39 +9,55 @@ public class SpectralCamera : HeldTool
     static readonly int OpenId = Shader.PropertyToID("_Open");
     static readonly int MarginId = Shader.PropertyToID("_Margin");
     static readonly int RadiusId = Shader.PropertyToID("_Radius");
+    static readonly int FrameId = Shader.PropertyToID("_Frame");
+    static readonly int ShutId = Shader.PropertyToID("_Shut");
 
     static SpectralCamera current;
 
     // How far the viewfinder is raised, read by the spectral render feature
     public static float Reveal => current != null ? current.Raised : 0f;
 
+    // Whether spectral objects show across the whole view rather than only in the window
+    public static bool FullView => current != null && current.Headset;
+
     [Header("Viewfinder")]
     [SerializeField] Transform viewfinder;
     [SerializeField] MeshRenderer mask;
     [SerializeField] MeshRenderer lens;
-    [Tooltip("The window's size in a headset, in degrees. Narrower than the view, so both eyes see its edges.")]
-    [SerializeField] Vector2 windowAngles = new(70f, 44f);
+    [Tooltip("The frame's size in a headset, in degrees. Just inside the view, so both eyes see it before it fades.")]
+    [SerializeField] Vector2 windowAngles = new(84f, 66f);
     [Tooltip("The window's size on a monitor, as a fraction of the screen.")]
     [SerializeField] Vector2 windowOnScreen = new(0.86f, 0.8f);
     [SerializeField] float raiseDrop = 0.35f;
+    [Tooltip("In a headset, how far the lens reaches past the frame, in window heights, so it fills the view.")]
+    [SerializeField] float fullMargin = 4f;
+    [Tooltip("Seconds the frame and its markings take to fade once looking through in a headset.")]
+    [SerializeField] float frameFadeTime = 2f;
 
     [Header("Held Camera")]
     [Tooltip("Where the eye goes on the camera item, in its own space. The item faces the way it shoots.")]
     [SerializeField] Vector3 eyepiece = new(0f, 0.01f, -0.03f);
     [Tooltip("How close the eyepiece must come to the eye to look through it, in meters.")]
-    [SerializeField] float lookDistance = 0.2f;
+    [SerializeField] float lookDistance = 0.3f;
     [Tooltip("How far the eyepiece must move from the eye to stop looking through it, in meters.")]
-    [SerializeField] float stopDistance = 0.26f;
+    [SerializeField] float stopDistance = 0.4f;
     [Tooltip("How closely the held camera must point where the head looks, from 0 (anywhere ahead) to 1 (exactly).")]
-    [SerializeField, Range(0f, 1f)] float lookAlignment = 0.7f;
+    [SerializeField, Range(0f, 1f)] float lookAlignment = 0.4f;
 
-    MaterialPropertyBlock lensBlock, maskBlock;
+    [Header("Leaving")]
+    [Tooltip("Two dark halves that close across the view as the camera leaves the eye.")]
+    [SerializeField] MeshRenderer shutter;
+    [Tooltip("Seconds the halves take to close, how long the view stays dark, and how long they take to open.")]
+    [SerializeField] float shutTime = 0.14f, darkTime = 0.12f, reopenTime = 0.3f;
+
+    MaterialPropertyBlock lensBlock, maskBlock, shutterBlock;
     TMP_Text raiseTip;
     Renderer[] model;
     ParticleSystem[] effects;
     HeldItemMotion motion;
     HandPoser hiddenHand;
-    bool looking, lookedThrough, modelShown = true;
+    float frame = 1f, shut, dark;
+    bool looking, shutting, lookedThrough, modelShown = true;
 
     public SpectralCamera() : base("Spectral Camera", "<Keyboard>/f") { }
 
@@ -57,6 +73,7 @@ public class SpectralCamera : HeldTool
         base.Awake();
         lensBlock = new MaterialPropertyBlock();
         maskBlock = new MaterialPropertyBlock();
+        shutterBlock = new MaterialPropertyBlock();
         if (HeldCamera == null) return;
         model = HeldCamera.GetComponentsInChildren<Renderer>();
         effects = HeldCamera.GetComponentsInChildren<ParticleSystem>();
@@ -76,8 +93,17 @@ public class SpectralCamera : HeldTool
         if (current == this) current = null;
     }
 
-    // In a headset, looking through means the eyepiece near the eye, aimed roughly where the head looks; it's judged by the hand, as the camera settles on the eye
+    // Spectral vision stays on until the view has shut, so it never visibly drops out
     protected override bool WantsRaised()
+    {
+        bool wasLooking = looking;
+        bool raised = WantsLook();
+        shutting = !looking && (shutting || wasLooking);
+        return raised || shutting;
+    }
+
+    // In a headset, looking through means the eyepiece near the eye, aimed roughly where the head looks; it's judged by the hand, as the camera settles on the eye
+    bool WantsLook()
     {
         if (!Held || View == null)
         {
@@ -128,23 +154,55 @@ public class SpectralCamera : HeldTool
             }
         }
         LayOutTip();
+        LayOutShutter();
         if (viewfinder.gameObject.activeSelf != shown) viewfinder.gameObject.SetActive(shown);
+        // The frame only marks the change of vision in a headset, where it would feel stuck to the eyes
+        frame = shown && Headset ? Mathf.MoveTowards(frame, 0f, Time.deltaTime / Mathf.Max(frameFadeTime, 0.001f)) : 1f;
         if (!shown) return;
 
         Vector2 window = Direction(windowAngles * 0.5f, windowOnScreen);
         Material lensMaterial = lens.sharedMaterial;
-        float margin = lensMaterial.GetFloat(MarginId);
+        float margin = Headset ? fullMargin : lensMaterial.GetFloat(MarginId);
         float width = 2f * distance * window.x, height = 2f * distance * window.y;
         Vector3 size = new(width + 2f * margin * height, height * (1f + 2f * margin), 1f);
         lens.transform.localScale = size;
         mask.transform.localScale = size;
-        viewfinder.localPosition = new Vector3(0f, -(1f - eased) * raiseDrop * height, distance);
+        viewfinder.localPosition = new Vector3(0f, Headset ? 0f : -(1f - eased) * raiseDrop * height, distance);
 
         lensBlock.SetFloat(OpenId, eased);
+        lensBlock.SetFloat(MarginId, margin);
+        lensBlock.SetFloat(FrameId, Mathf.SmoothStep(0f, 1f, frame));
         lens.SetPropertyBlock(lensBlock);
         maskBlock.SetFloat(MarginId, margin);
         maskBlock.SetFloat(RadiusId, lensMaterial.GetFloat(RadiusId));
         mask.SetPropertyBlock(maskBlock);
+    }
+
+    // Leaving the eye shuts the view like eyelids, holds it dark while the vision drops away, then lets it open again
+    void LayOutShutter()
+    {
+        if (shutter == null)
+        {
+            shutting = false;
+            return;
+        }
+        if (shutting)
+        {
+            shut = Mathf.MoveTowards(shut, 1f, Time.deltaTime / Mathf.Max(shutTime, 0.001f));
+            if (shut >= 1f)
+            {
+                shutting = false;
+                dark = darkTime;
+            }
+        }
+        else if (dark > 0f) dark -= Time.deltaTime;
+        else shut = Mathf.MoveTowards(shut, 0f, Time.deltaTime / Mathf.Max(reopenTime, 0.001f));
+
+        bool shown = shut > 0f;
+        if (shutter.enabled != shown) shutter.enabled = shown;
+        if (!shown) return;
+        shutterBlock.SetFloat(ShutId, Mathf.SmoothStep(0f, 1f, shut));
+        shutter.SetPropertyBlock(shutterBlock);
     }
 
     // The tip shows by the camera in a headset until the player first looks through it, turned to face them

@@ -93,6 +93,8 @@ public class LanternLight : MonoBehaviour
     public Transform Cap => cap;
 
     MaterialPropertyBlock glowBlock, flameBlock;
+    XRGrabInteractable item;
+    Collider capCollider;
     IXRSelectInteractor winder;
     Quaternion lastTurn;
     Color lampColor;
@@ -104,6 +106,8 @@ public class LanternLight : MonoBehaviour
         flameBlock = new MaterialPropertyBlock();
         noiseSeed = Random.value * 100f;
         if (lamp != null) lampColor = lamp.color;
+        item = GetComponent<XRGrabInteractable>();
+        if (crank != null) capCollider = crank.GetComponent<Collider>();
     }
 
     // How many full levels the charge holds
@@ -168,6 +172,9 @@ public class LanternLight : MonoBehaviour
 
     void Update()
     {
+        // The cap only grips while a hand holds the lantern; anywhere else, reaching for the top should pick the lantern up
+        if (capCollider != null && item != null) capCollider.enabled = item.isSelected && item.firstInteractorSelecting is not XRSocketInteractor;
+
         if (winder != null)
         {
             // Only the hand's twist about the lantern's up axis turns the cap

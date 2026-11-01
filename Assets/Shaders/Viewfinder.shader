@@ -7,6 +7,7 @@ Shader "Look Again/Viewfinder"
         _Margin ("Margin (window heights)", Float) = 0.12
         _Radius ("Corner Radius (window heights)", Float) = 0.06
         _Open ("Open", Range(0, 1)) = 1
+        _Frame ("Frame and Markings", Range(0, 1)) = 1
 
         [Header(Lens)]
         _Tint ("Tint", Color) = (1, 0.975, 0.92, 1)
@@ -40,6 +41,7 @@ Shader "Look Again/Viewfinder"
         float _Margin;
         float _Radius;
         half _Open;
+        half _Frame;
         half4 _Tint;
         half _Vignette;
         half _EdgeShadow;
@@ -101,7 +103,7 @@ Shader "Look Again/Viewfinder"
         }
         ENDHLSL
 
-        // Multiplies the view in the window: tint, vignette, grain and flicker
+        // Multiplies the view in the window, or all of it once the frame is gone: tint, vignette, grain and flicker
         Pass
         {
             Name "Lens Tint"
@@ -121,11 +123,11 @@ Shader "Look Again/Viewfinder"
                 Window w = GetWindow(input);
                 float filmFrame = floor(_Time.y * 24);
                 half vignette = smoothstep(0.55, 1.45, length(w.p / w.halfSize * float2(1, 0.9))) * _Vignette;
-                half edge = smoothstep(-0.04, 0, w.d) * _EdgeShadow;
+                half edge = smoothstep(-0.04, 0, w.d) * _EdgeShadow * _Frame;
                 half flicker = Hash21(float2(filmFrame, 7.1)) * _Flicker;
                 half grain = Hash21(floor(w.p * _GrainSize) + filmFrame * float2(31.7, 17.3)) * _Grain;
                 half3 lens = _Tint.rgb * saturate(1 - vignette - edge - flicker - grain);
-                return half4(lerp(1, lens, (1 - w.frame) * _Open), 1);
+                return half4(lerp(1, lens, (1 - w.frame * _Frame) * _Open), 1);
             }
             ENDHLSL
         }
@@ -192,7 +194,7 @@ Shader "Look Again/Viewfinder"
             half4 Fragment(ViewfinderVaryings input) : SV_Target
             {
                 Window w = GetWindow(input);
-                return lerp(Marks(w), Frame(w), w.frame) * _Open;
+                return lerp(Marks(w), Frame(w), w.frame) * _Open * _Frame;
             }
             ENDHLSL
         }

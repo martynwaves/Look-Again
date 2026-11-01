@@ -1,5 +1,5 @@
-// Shapes how an item moves while a hand or ray holds it: newly taken, it eases over slowly (slower still out of a belt slot), it can be kept turned to face the eyes,
-// and held up to the eye it settles into place there. Dragged with the mouse on a monitor, it stays under the cursor and the wheel moves it nearer or further.
+// Shapes how an item moves while a hand or ray holds it: it always sits the same way in the hand, by its middle, and newly taken it eases over slowly. It can be kept
+// upright or turned to face the eyes, and held up to the eye it settles into place there. Dragged with the mouse on a monitor, it stays under the cursor and the wheel moves it nearer or further.
 
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -11,11 +11,17 @@ using UnityEngine.XR.Interaction.Toolkit.Transformers;
 
 public class HeldItemMotion : XRBaseGrabTransformer
 {
-    [Tooltip("Seconds the item takes to ease over to the hand or ray when taken out of a belt slot.")]
+    [Tooltip("Seconds the item takes to ease over to the ray when the mouse drags it out of a belt slot.")]
     [SerializeField] float takeOutTime = 0.8f;
 
-    [Tooltip("Seconds it takes when picked up from anywhere else.")]
+    [Tooltip("Seconds it takes any other time.")]
     [SerializeField] float pickUpTime = 0.35f;
+
+    [Tooltip("How the item is turned in the hand, relative to where the hand points, in degrees.")]
+    [SerializeField] Vector3 heldTurn;
+
+    [Tooltip("Keep the item standing upright while held, turning only as the hand turns about the vertical.")]
+    [SerializeField] bool keepUpright;
 
     [Tooltip("Keep the item upright with its front (its local forward) turned toward the eyes while held.")]
     [SerializeField] bool faceEyes;
@@ -56,6 +62,16 @@ public class HeldItemMotion : XRBaseGrabTransformer
         return true;
     }
 
+    // How the item sits in the hand, however it was grabbed. The simulated controller spins as it aims down past the eyes, so a mouse drag stays level, facing the way the eyes do
+    Quaternion HeldRotation(Transform hand, Camera view, bool cursor)
+    {
+        Quaternion turn = Quaternion.Euler(heldTurn);
+        if (!keepUpright && !cursor) return hand.rotation * turn;
+        Vector3 flat = Vector3.ProjectOnPlane(cursor ? view.transform.forward : hand.forward, Vector3.up);
+        if (flat.sqrMagnitude < 0.01f) flat = Vector3.ProjectOnPlane(transform.forward, Vector3.up);
+        return Quaternion.LookRotation(flat, Vector3.up) * turn;
+    }
+
     public override void Process(XRGrabInteractable grabInteractable, XRInteractionUpdateOrder.UpdatePhase updatePhase, ref Pose targetPose, ref Vector3 localScale)
     {
         if (updatePhase != XRInteractionUpdateOrder.UpdatePhase.Dynamic && updatePhase != XRInteractionUpdateOrder.UpdatePhase.OnBeforeRender) return;
@@ -76,7 +92,7 @@ public class HeldItemMotion : XRBaseGrabTransformer
             if (!bySlot)
             {
                 from = new Pose(transform.position, transform.rotation);
-                easeTime = holder is XRSocketInteractor ? takeOutTime : pickUpTime;
+                easeTime = cursor && holder is XRSocketInteractor ? takeOutTime : pickUpTime;
                 eased = 0f;
                 atEye = 0f;
             }
@@ -102,10 +118,17 @@ public class HeldItemMotion : XRBaseGrabTransformer
         }
         if (cursor) targetPose.position = pointed.GetPoint(cursorDistance) + cursorOffset;
 
+        Transform hand = interactor.GetAttachTransform(grabInteractable);
+        targetPose.rotation = HeldRotation(hand, view, cursor);
         if (faceEyes && view != null)
         {
             Vector3 toEyes = Vector3.ProjectOnPlane(view.transform.position - targetPose.position, Vector3.up);
             if (toEyes.sqrMagnitude > 1e-4f) targetPose.rotation = Quaternion.LookRotation(toEyes, Vector3.up);
+        }
+        if (!cursor)
+        {
+            Vector3 middle = TryGetComponent(out IStowedShape shape) ? shape.StowedMiddle : Vector3.zero;
+            targetPose.position = hand.position - targetPose.rotation * Vector3.Scale(middle, transform.lossyScale);
         }
 
         if (eased < 1f)

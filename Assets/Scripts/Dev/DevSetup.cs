@@ -20,6 +20,9 @@ public static class DevSetup
     // Where the simulated right controller starts, from the eyes (the left mirrors it): lower and wider, where hands rest
     static readonly Vector3 SimulatedHandRest = new(0.17f, -0.06f, 0.4f);
 
+    // The simulator's mouse ignores anything nearer the camera than this; its default of 0.5 m hides the tops of items on the belt
+    const float SimulatedAimRadius = 0.3f;
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static async void StartSimulatorIfNoHeadset()
     {
@@ -62,6 +65,7 @@ public static class DevSetup
     {
         XRInteractionSimulator controls = simulator.GetComponentInChildren<XRInteractionSimulator>();
         if (controls == null) return;
+        controls.deviceAimCameraRadius = SimulatedAimRadius;
         foreach ((string field, float side) in new[] { ("m_LeftControllerState", -1f), ("m_RightControllerState", 1f) })
         {
             FieldInfo state = typeof(XRInteractionSimulator).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic);
