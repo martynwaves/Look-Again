@@ -1,5 +1,5 @@
 // The crank lantern's light: it dims and flickers as its charge runs down, and winding the cap recharges it in a spray of sparks, flaring at each new level.
-// In a headset a hand twists the cap; on a monitor the Lantern tool winds it from the keyboard.
+// In a headset a hand twists the cap or circles round it like a crank; on a monitor the Lantern tool winds it from the keyboard.
 
 using UnityEngine;
 using UnityEngine.XR.Interaction.Toolkit;
@@ -36,6 +36,9 @@ public class LanternLight : MonoBehaviour
 
     [Tooltip("Seconds a full charge lasts. The whole fade, from steady to sputtering out, plays out over this.")]
     [SerializeField] float lastsFor = 150f;
+
+    [Tooltip("How far from the cap's axis a hand must be, in meters, for circling round it to turn the cap.")]
+    [SerializeField] float crankRadius = 0.015f;
 
     [Tooltip("How much charge one full turn of the cap adds, either way.")]
     [SerializeField] float chargePerTurn = 0.2f;
@@ -90,6 +93,9 @@ public class LanternLight : MonoBehaviour
     [SerializeField] float levelFlameSurge = 0.6f;
 
     public float Charge => charge;
+
+    // Degrees the cap has turned in all, either way
+    public float TotalWound { get; private set; }
     public Transform Cap => cap;
 
     MaterialPropertyBlock glowBlock, flameBlock;
@@ -97,6 +103,7 @@ public class LanternLight : MonoBehaviour
     Collider capCollider;
     IXRSelectInteractor winder;
     Quaternion lastTurn;
+    Vector3 lastReach;
     Color lampColor;
     float noiseSeed, dipUntil, nextDip, dipDepth, sparksDue, fuelDue, flash, windingUntil;
 
@@ -132,6 +139,7 @@ public class LanternLight : MonoBehaviour
     {
         winder = args.interactorObject;
         lastTurn = HandTurn();
+        lastReach = HandReach();
     }
 
     void OnCrankReleased(SelectExitEventArgs args)
@@ -142,10 +150,19 @@ public class LanternLight : MonoBehaviour
     // The winding hand's rotation relative to the lantern, so carrying the lantern around doesn't wind it
     Quaternion HandTurn() => Quaternion.Inverse(transform.rotation) * winder.transform.rotation;
 
+    // Where the winding hand is from the cap's axis, flat across the lantern
+    Vector3 HandReach()
+    {
+        Vector3 axis = transform.InverseTransformPoint(cap != null ? cap.position : transform.position);
+        Vector3 reach = transform.InverseTransformPoint(winder.transform.position) - axis;
+        return Vector3.ProjectOnPlane(Vector3.Scale(reach, transform.lossyScale), Vector3.up);
+    }
+
     // Turns the cap by some degrees, charging the lantern by how far it turned
     public void Wind(float degrees)
     {
         if (cap != null) cap.localRotation *= Quaternion.Euler(0f, degrees, 0f);
+        TotalWound += Mathf.Abs(degrees);
         // The charge holds while the cap turns, so a full turn always fills a full level; the grace spans a hand turning back between twists
         if (Mathf.Abs(degrees) > 0.01f) windingUntil = Time.time + 0.3f;
         int before = Level(charge);
@@ -177,17 +194,22 @@ public class LanternLight : MonoBehaviour
 
         if (winder != null)
         {
-            // Only the hand's twist about the lantern's up axis turns the cap
+            // The hand's twist about the lantern's up axis, or its circling round the cap like a crank, whichever turned further; only while its grip is squeezed, never the trigger
             Quaternion now = HandTurn();
             Quaternion turn = now * Quaternion.Inverse(lastTurn);
             if (turn.w < 0f) turn = new Quaternion(-turn.x, -turn.y, -turn.z, -turn.w);
-            Wind(2f * Mathf.Atan2(turn.y, turn.w) * Mathf.Rad2Deg);
+            float twisted = 2f * Mathf.Atan2(turn.y, turn.w) * Mathf.Rad2Deg;
+            Vector3 reach = HandReach();
+            float circled = reach.magnitude > crankRadius && lastReach.magnitude > crankRadius ? Vector3.SignedAngle(lastReach, reach, Vector3.up) : 0f;
+            HandPoser hand = HandPoser.Of(winder);
+            if (hand == null || hand.Grip > 0.5f) Wind(Mathf.Abs(circled) > Mathf.Abs(twisted) ? circled : twisted);
             lastTurn = now;
+            lastReach = reach;
         }
 
         if (Time.time >= windingUntil) charge = Mathf.Max(0f, charge - Time.deltaTime / Mathf.Max(lastsFor, 0.01f));
         // Dims steadily as it runs down, faster near the end
-        float level = charge > 0f ? Mathf.Pow(charge, 0.6f) * Flicker() : 0f;
+        float level = (charge > 0f ? Mathf.Pow(charge, 0.6f) * Flicker() : 0f) * Blackout.Level;
         // A new level flares brighter in a lighter royal blue, fading quickly back
         flash = Mathf.MoveTowards(flash, 0f, Time.deltaTime / Mathf.Max(levelFlashTime, 0.01f));
         float poof = flash * flash;

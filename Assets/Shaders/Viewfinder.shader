@@ -29,6 +29,7 @@ Shader "Look Again/Viewfinder"
         _RimWidth ("Rim Width (window heights)", Float) = 0.014
         _Band ("Solid Band (window heights)", Float) = 0.035
         _Feather ("Fade Out (window heights)", Float) = 0.07
+        _Surround ("Black Beyond Frame", Range(0, 1)) = 0
     }
     SubShader
     {
@@ -59,6 +60,7 @@ Shader "Look Again/Viewfinder"
         float _RimWidth;
         float _Band;
         float _Feather;
+        half _Surround;
         CBUFFER_END
 
         #include "Viewfinder.hlsl"
@@ -187,8 +189,10 @@ Shader "Look Again/Viewfinder"
                 half3 rim = _RimColor.rgb * (0.35 + 1.1 * light * light);
                 half rimAmount = 1 - smoothstep(_RimWidth * 0.8, _RimWidth, w.d);
 
-                half alpha = 1 - smoothstep(_Band, _Band + _Feather, w.d);
-                return half4(lerp(body, rim, rimAmount) * alpha, alpha);
+                // Past the solid band it fades out, or into black where nothing past the frame should show
+                half beyond = smoothstep(_Band, _Band + _Feather, w.d);
+                half alpha = 1 - beyond * (1 - _Surround);
+                return half4(lerp(lerp(body, rim, rimAmount), 0, beyond * _Surround) * alpha, alpha);
             }
 
             half4 Fragment(ViewfinderVaryings input) : SV_Target

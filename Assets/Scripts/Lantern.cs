@@ -1,5 +1,5 @@
 // The crank lantern on a monitor: holding R takes it up in front of the eyes from the belt or a hand, where the right hand winds its cap;
-// letting go puts it back on the belt. In a headset it's wound by twisting its cap by hand instead.
+// letting go puts it back on the belt. In a headset it's wound by twisting its cap by hand instead, with a tip by it until it's first wound a full turn.
 
 using UnityEngine;
 
@@ -32,8 +32,21 @@ public class Lantern : HeldTool
     const float Gripping = 0.65f;
 
     LanternLight lantern;
+    TMPro.TMP_Text windTip;
     Vector3 raisedAt;
     float stroke, twisted;
+
+    // Whether the lantern is alight
+    public bool Lit => lantern != null && lantern.Charge > 0.02f;
+
+    // Whether the player is holding the lantern out: in a hand, or on a monitor dragged by the mouse or taken up with its key
+    public bool Ready => InHand || TakenOut;
+
+    // Whether it's shining its light out, held out and lit
+    public bool Shining => Lit && Ready;
+
+    // Where its light comes from
+    public Vector3 LightPosition => item != null ? item.transform.position : transform.position;
 
     public Lantern() : base("Lantern", "<Keyboard>/r") { }
 
@@ -45,11 +58,14 @@ public class Lantern : HeldTool
         if (raisedPoint != null) raisedAt = raisedPoint.localPosition;
         base.Awake();
         if (item != null) lantern = item.GetComponent<LanternLight>();
+        windTip = CreateTip("Grip the cap with your other hand\nand turn it to wind the lantern");
     }
 
     protected override void LayOut(float eased)
     {
         if (raisedPoint != null) raisedPoint.localPosition = raisedAt + Vector3.down * ((1f - eased) * raiseDrop);
+        bool learning = Headset && InHand && lantern != null && lantern.Cap != null && lantern.TotalWound < 360f;
+        PlaceTip(windTip, learning, learning ? lantern.Cap.position + Vector3.up * 0.12f : Vector3.zero);
         // Wound once it's up in front of the eyes
         if (TakenOut && eased > 0.9f && lantern != null && lantern.Cap != null) Wind();
         else

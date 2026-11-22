@@ -52,6 +52,9 @@ public class HandPoser : MonoBehaviour
         return null;
     }
 
+    // How far the grip button is pressed, from 0 to 1
+    public float Grip => Read(grip);
+
     // Whether the hand is drawn; hidden while it holds the camera to the eye, a few centimetres in front of it
     public bool Shown
     {

@@ -134,8 +134,9 @@ public abstract class HeldTool : MonoBehaviour
 
         // The item glides up as soon as it's asked for and back as soon as it isn't, rather than first dropping out of view
         bool open = WantsRaised();
-        if (open && !tookOut && !headset) TakeOut();
-        else if (!open && tookOut) PutBack();
+        bool takeOut = open && TakesOut;
+        if (takeOut && !tookOut) TakeOut();
+        else if (!takeOut && tookOut) PutBack();
         float step = Time.deltaTime / Mathf.Max(open ? raiseTime : lowerTime, 0.001f);
         raised = Mathf.MoveTowards(raised, open ? 1f : 0f, step);
         Raised = 1f - (1f - raised) * (1f - raised) * (1f - raised);
@@ -158,7 +159,7 @@ public abstract class HeldTool : MonoBehaviour
     {
         if (item == null || raisedSlot == null || raisedSlot.hasSelection) return;
         if (item.isSelected) item.interactionManager.SelectExit(item.firstInteractorSelecting, item);
-        item.interactionManager.SelectEnter((IXRSelectInteractor)raisedSlot, (IXRSelectInteractable)item);
+        BeltSlot.Place(raisedSlot, item);
         tookOut = TakenOut;
     }
 
@@ -169,7 +170,7 @@ public abstract class HeldTool : MonoBehaviour
         XRSocketInteractor home = Belt.HomeOf(item);
         IXRSelectInteractor to = Belt.IsFree(lastSlot) ? lastSlot : Belt.IsFree(home) ? home : Belt.FreeSlot();
         item.interactionManager.SelectExit((IXRSelectInteractor)raisedSlot, (IXRSelectInteractable)item);
-        if (to != null) item.interactionManager.SelectEnter(to, item);
+        BeltSlot.Place(to as XRSocketInteractor, item);
     }
 
     // Head-locked things feel stuck to the face in a headset and judder under reprojection, so there the tool eases after the head
@@ -177,18 +178,26 @@ public abstract class HeldTool : MonoBehaviour
     {
         if (view == null) return;
         Transform head = view.transform;
-        Transform parent = headset ? head.parent : head;
+        bool locked = headset && LockedToEyes;
+        Transform parent = headset && !locked ? head.parent : head;
         if (transform.parent != parent)
         {
             transform.SetParent(parent, false);
-            transform.SetPositionAndRotation(head.position, headset ? Facing(head) : head.rotation);
+            if (locked) transform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
+            else transform.SetPositionAndRotation(head.position, headset ? Facing(head) : head.rotation);
         }
-        if (!headset) return;
+        if (!headset || locked) return;
 
         float follow = Mathf.Lerp(loweredFollow, raisedFollow, Raised);
         Quaternion turned = Quaternion.Slerp(transform.rotation, Facing(head), 1f - Mathf.Exp(-follow * Time.deltaTime));
         transform.SetPositionAndRotation(head.position, turned);
     }
+
+    // Whether raising the tool takes the item up to the eyes itself: on a monitor always, in a headset only when a tool asks
+    protected virtual bool TakesOut => !headset;
+
+    // Whether the tool sits fixed in front of the eyes in a headset, rather than easing after the head
+    protected virtual bool LockedToEyes => false;
 
     // Which way the tool faces in a headset: where the head looks, kept level
     protected virtual Quaternion Facing(Transform head) => Upright(head);
@@ -207,6 +216,35 @@ public abstract class HeldTool : MonoBehaviour
         if (headset || view == null) return new(Mathf.Tan(angles.x * Mathf.Deg2Rad), Mathf.Tan(angles.y * Mathf.Deg2Rad));
         float up = Mathf.Tan(view.fieldOfView * 0.5f * Mathf.Deg2Rad);
         return Vector2.Scale(onScreen, new Vector2(up * view.aspect, up));
+    }
+
+    // Small text that floats by the item in a headset, in the same font as the icon hints
+    protected TMP_Text CreateTip(string text)
+    {
+        TextMeshPro tip = new GameObject($"{name} Tip", typeof(TextMeshPro)).GetComponent<TextMeshPro>();
+        // Text casts no shadow, or a light nearby throws its letters onto the walls
+        tip.GetComponent<MeshRenderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        if (hint != null)
+        {
+            tip.font = hint.font;
+            tip.fontSharedMaterial = hint.fontSharedMaterial;
+            tip.color = hint.color;
+        }
+        tip.text = text;
+        tip.fontSize = 0.15f;
+        tip.alignment = TextAlignmentOptions.Center;
+        tip.textWrappingMode = TextWrappingModes.NoWrap;
+        tip.rectTransform.sizeDelta = new Vector2(0.3f, 0.05f);
+        tip.gameObject.SetActive(false);
+        return tip;
+    }
+
+    // Shows or hides a tip, floating it at a point turned to face the eyes
+    protected void PlaceTip(TMP_Text tip, bool shown, Vector3 at)
+    {
+        if (tip == null) return;
+        if (tip.gameObject.activeSelf != shown) tip.gameObject.SetActive(shown);
+        if (shown && view != null) tip.transform.SetPositionAndRotation(at, Quaternion.LookRotation(at - view.transform.position, Vector3.up));
     }
 
     // Fades the icon and its hint out while any tool is raised, leaving them where the scene puts them

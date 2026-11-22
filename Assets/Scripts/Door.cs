@@ -36,6 +36,9 @@ public class Door : MonoBehaviour
     [Tooltip("Let go within this many degrees of shut, swinging back or coming to rest, the door clicks shut.")]
     [SerializeField] float latchAngle = 10f;
 
+    // Whether the player has yet grabbed any door
+    public static bool EverGrabbed { get; private set; }
+
     public bool Locked
     {
         get => locked;
@@ -54,6 +57,7 @@ public class Door : MonoBehaviour
     {
         interactable = GetComponent<XRSimpleInteractable>();
         closed = transform.localRotation;
+        EverGrabbed = false;
         // The door's middle, in its own space, tells which way swings away from someone
         Renderer body = GetComponent<Renderer>();
         middle = body != null ? transform.InverseTransformPoint(body.bounds.center) : Vector3.left * 0.5f;
@@ -76,7 +80,10 @@ public class Door : MonoBehaviour
     {
         // The grabbed point stays put relative to the controller, as if held on a stick, so a ray grab swings the door from where it hit
         holder = args.interactorObject;
-        heldPoint = holder.transform.InverseTransformPoint(GrabPoint(holder));
+        EverGrabbed = true;
+        Vector3 grabbed = GrabPoint(holder);
+        heldPoint = holder.transform.InverseTransformPoint(grabbed);
+        if (interactable is DoorGrab grip) grip.HoldAt(grabbed);
         handTurn = 0f;
         HandAngle(holder.transform.TransformPoint(heldPoint), out lastHand);
         if (locked)

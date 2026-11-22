@@ -14,4 +14,5 @@ public class StowedFacing : MonoBehaviour, IStowedShape
     public Quaternion StowedTurn => Quaternion.Euler(turn);
     public bool ShowsStowed(Transform part) => part.TryGetComponent(out Renderer look) && look.enabled;
     public Matrix4x4 StowedPose(Transform part) => transform.worldToLocalMatrix * part.localToWorldMatrix;
+    public Mesh StowedMesh(MeshFilter part) => part.sharedMesh;
 }

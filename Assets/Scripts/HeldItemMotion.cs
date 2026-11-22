@@ -23,7 +23,7 @@ public class HeldItemMotion : XRBaseGrabTransformer
     [Tooltip("Keep the item standing upright while held, turning only as the hand turns about the vertical.")]
     [SerializeField] bool keepUpright;
 
-    [Tooltip("Keep the item upright with its front (its local forward) turned toward the eyes while held.")]
+    [Tooltip("Keep the item's front (its local forward) turned toward the eyes while held, tilted up or down to meet them but never rolled.")]
     [SerializeField] bool faceEyes;
 
     [Tooltip("Seconds the item takes to settle at the eye when held up to it, and to leave it again.")]
@@ -46,18 +46,19 @@ public class HeldItemMotion : XRBaseGrabTransformer
     float easeTime, eased = 1f, atEye, cursorDistance;
     Vector3 cursorOffset;
     bool underCursor;
+    Ray lastPointed;
     int lastFrame = -1;
 
     // Eases in and out with no sudden start or stop
     static float Ease(float t) => t * t * t * (t * (t * 6f - 15f) + 10f);
 
-    // Whether the item is dragged by the mouse on a monitor: held at a distance by a ray the simulator aims at the mouse
-    static bool FollowsCursor(IXRSelectInteractor interactor, Camera view, out Ray pointed)
+    // Whether the item is dragged by the mouse on a monitor: held by a hand the simulator aims at the mouse, however near
+    public static bool FollowsCursor(IXRSelectInteractor interactor, Camera view, out Ray pointed)
     {
         pointed = default;
         if (UnityEngine.XR.XRSettings.isDeviceActive || view == null || Mouse.current == null) return false;
         if (XRInteractionSimulator.instance == null || !XRInteractionSimulator.instance.pointAndClickActive) return false;
-        if (interactor is not NearFarInteractor ray || ray.selectionRegion.Value != NearFarInteractor.Region.Far) return false;
+        if (interactor is not NearFarInteractor) return false;
         pointed = view.ScreenPointToRay(Mouse.current.position.ReadValue());
         return true;
     }
@@ -70,6 +71,12 @@ public class HeldItemMotion : XRBaseGrabTransformer
         Vector3 flat = Vector3.ProjectOnPlane(cursor ? view.transform.forward : hand.forward, Vector3.up);
         if (flat.sqrMagnitude < 0.01f) flat = Vector3.ProjectOnPlane(transform.forward, Vector3.up);
         return Quaternion.LookRotation(flat, Vector3.up) * turn;
+    }
+
+    // Brings a mouse-dragged item's distance in by as much as something held it back, so it stays there
+    public void DrawIn(Vector3 back)
+    {
+        if (underCursor) cursorDistance = Mathf.Max(cursorDistance + Vector3.Dot(back, lastPointed.direction), scrollRange.x);
     }
 
     public override void Process(XRGrabInteractable grabInteractable, XRInteractionUpdateOrder.UpdatePhase updatePhase, ref Pose targetPose, ref Vector3 localScale)
@@ -108,6 +115,7 @@ public class HeldItemMotion : XRBaseGrabTransformer
             cursorOffset = transform.position - pointed.GetPoint(cursorDistance);
         }
         underCursor = cursor;
+        if (cursor) lastPointed = pointed;
         // The mouse wheel draws it nearer or pushes it further along the cursor's line; right-click scrolling is the simulator's own
         if (cursor && dynamic && !Mouse.current.rightButton.isPressed)
         {
@@ -122,8 +130,8 @@ public class HeldItemMotion : XRBaseGrabTransformer
         targetPose.rotation = HeldRotation(hand, view, cursor);
         if (faceEyes && view != null)
         {
-            Vector3 toEyes = Vector3.ProjectOnPlane(view.transform.position - targetPose.position, Vector3.up);
-            if (toEyes.sqrMagnitude > 1e-4f) targetPose.rotation = Quaternion.LookRotation(toEyes, Vector3.up);
+            Vector3 toEyes = view.transform.position - targetPose.position;
+            if (Vector3.Cross(toEyes, Vector3.up).sqrMagnitude > 1e-4f) targetPose.rotation = Quaternion.LookRotation(toEyes, Vector3.up);
         }
         if (!cursor)
         {

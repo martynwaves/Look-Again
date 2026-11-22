@@ -1,8 +1,10 @@
 // The spectral camera: on a monitor a key raises a viewfinder that reveals spectral objects inside its window.
-// In a headset, bringing it to the eye turns the whole view spectral while its frame fades away, and taking it away shuts the view dark for a moment.
+// In a headset, bringing it to the eye turns the whole view spectral, framed in black; taking it away shrinks the frame onto the camera in the hand and fades it there.
 
 using TMPro;
 using UnityEngine;
+using UnityEngine.XR.Interaction.Toolkit.Interactors;
+using UnityEngine.XR.Interaction.Toolkit.Interactors.Visuals;
 
 public class SpectralCamera : HeldTool
 {
@@ -10,54 +12,75 @@ public class SpectralCamera : HeldTool
     static readonly int MarginId = Shader.PropertyToID("_Margin");
     static readonly int RadiusId = Shader.PropertyToID("_Radius");
     static readonly int FrameId = Shader.PropertyToID("_Frame");
-    static readonly int ShutId = Shader.PropertyToID("_Shut");
+    static readonly int SurroundId = Shader.PropertyToID("_Surround");
 
     static SpectralCamera current;
 
-    // How far the viewfinder is raised, read by the spectral render feature
-    public static float Reveal => current != null ? current.Raised : 0f;
+    // How strongly spectral objects show, read by the spectral render feature: as far as the viewfinder is raised, fading with the frame as it lands on the camera
+    public static float Reveal => current != null ? current.Raised * current.revealLeft : 0f;
 
-    // Whether spectral objects show across the whole view rather than only in the window
-    public static bool FullView => current != null && current.Headset;
+    // Whether spectral objects show across the whole view rather than only in the window, which is while looking through in a headset
+    public static bool FullView => current != null && current.Headset && current.looking;
+
+    // Asks for the camera at the eye this frame, whether or not the player holds it there, such as while dispelling a spirit
+    public static void RequestView() => requestedFrame = Time.frameCount;
+
+    // Whether a point is in sight through the camera, walls or not: inside the frame within some distance, from the first moment it's raised to the last of lowering it
+    public static bool Sees(Vector3 point, float maxDistance)
+    {
+        if (current == null || current.View == null || Reveal <= 0f) return false;
+        Camera view = current.View;
+        Vector3 toPoint = point - view.transform.position;
+        if (toPoint.magnitude > maxDistance) return false;
+        if (current.Headset)
+        {
+            Vector3 local = view.transform.InverseTransformDirection(toPoint);
+            if (local.z <= 0f) return false;
+            float across = Mathf.Atan2(local.x, local.z) * Mathf.Rad2Deg, up = Mathf.Atan2(local.y, local.z) * Mathf.Rad2Deg;
+            return Mathf.Abs(across) <= current.windowAngles.x * 0.5f && Mathf.Abs(up) <= current.windowAngles.y * 0.5f;
+        }
+        Vector3 onScreen = view.WorldToViewportPoint(point);
+        return onScreen.z > 0f && Mathf.Abs(onScreen.x - 0.5f) <= current.windowOnScreen.x * 0.5f && Mathf.Abs(onScreen.y - 0.5f) <= current.windowOnScreen.y * 0.5f;
+    }
+
+    static int requestedFrame = -10;
 
     [Header("Viewfinder")]
     [SerializeField] Transform viewfinder;
     [SerializeField] MeshRenderer mask;
     [SerializeField] MeshRenderer lens;
-    [Tooltip("The frame's size in a headset, in degrees. Just inside the view, so both eyes see it before it fades.")]
+    [Tooltip("The frame's size in a headset, in degrees. Just inside the view, so both eyes see all of it.")]
     [SerializeField] Vector2 windowAngles = new(84f, 66f);
     [Tooltip("The window's size on a monitor, as a fraction of the screen.")]
     [SerializeField] Vector2 windowOnScreen = new(0.86f, 0.8f);
     [SerializeField] float raiseDrop = 0.35f;
-    [Tooltip("In a headset, how far the lens reaches past the frame, in window heights, so it fills the view.")]
+    [Tooltip("How far the lens reaches past the frame, in window heights, so the black past it fills the view.")]
     [SerializeField] float fullMargin = 4f;
-    [Tooltip("Seconds the frame and its markings take to fade once looking through in a headset.")]
-    [SerializeField] float frameFadeTime = 2f;
 
     [Header("Held Camera")]
     [Tooltip("Where the eye goes on the camera item, in its own space. The item faces the way it shoots.")]
     [SerializeField] Vector3 eyepiece = new(0f, 0.01f, -0.03f);
-    [Tooltip("How close the eyepiece must come to the eye to look through it, in meters.")]
-    [SerializeField] float lookDistance = 0.3f;
-    [Tooltip("How far the eyepiece must move from the eye to stop looking through it, in meters.")]
-    [SerializeField] float stopDistance = 0.4f;
-    [Tooltip("How closely the held camera must point where the head looks, from 0 (anywhere ahead) to 1 (exactly).")]
-    [SerializeField, Range(0f, 1f)] float lookAlignment = 0.4f;
+    [Tooltip("How close the controller holding the camera must come to the eyes to look through it, in meters.")]
+    [SerializeField] float lookDistance = 0.22f;
+    [Tooltip("How far the controller must move from the eyes to stop looking through it, in meters.")]
+    [SerializeField] float stopDistance = 0.32f;
 
     [Header("Leaving")]
-    [Tooltip("Two dark halves that close across the view as the camera leaves the eye.")]
-    [SerializeField] MeshRenderer shutter;
-    [Tooltip("Seconds the halves take to close, how long the view stays dark, and how long they take to open.")]
-    [SerializeField] float shutTime = 0.14f, darkTime = 0.12f, reopenTime = 0.3f;
+    [Tooltip("As the camera leaves the eye in a headset, the framed window shrinks onto it in step with its travel back to the hand. Seconds it takes at most, should the camera not get there.")]
+    [SerializeField] float collapseTime = 0.5f;
 
-    MaterialPropertyBlock lensBlock, maskBlock, shutterBlock;
+    MaterialPropertyBlock lensBlock, maskBlock;
     TMP_Text raiseTip;
     Renderer[] model;
     ParticleSystem[] effects;
     HeldItemMotion motion;
     HandPoser hiddenHand;
-    float frame = 1f, shut, dark;
-    bool looking, shutting, lookedThrough, modelShown = true;
+    GameObject hiddenLine;
+    Transform hiddenController;
+    readonly System.Collections.Generic.List<Renderer> hiddenParts = new();
+    Vector3 modelMiddle;
+    float modelWidth = 0.12f, collapse, collapseStart, startDistance, revealLeft = 1f;
+    bool looking, collapsing, lookedThrough, autoRaised, modelShown = true;
 
     public SpectralCamera() : base("Spectral Camera", "<Keyboard>/f") { }
 
@@ -73,12 +96,35 @@ public class SpectralCamera : HeldTool
         base.Awake();
         lensBlock = new MaterialPropertyBlock();
         maskBlock = new MaterialPropertyBlock();
-        shutterBlock = new MaterialPropertyBlock();
         if (HeldCamera == null) return;
         model = HeldCamera.GetComponentsInChildren<Renderer>();
         effects = HeldCamera.GetComponentsInChildren<ParticleSystem>();
         motion = HeldCamera.GetComponent<HeldItemMotion>();
-        raiseTip = CreateTip(HeldCamera);
+        raiseTip = CreateTip("Raise to your eye");
+        MeasureModel();
+    }
+
+    // The camera body's middle in its own space, and how wide it is, which the frame shrinks onto
+    void MeasureModel()
+    {
+        Bounds body = default;
+        bool found = false;
+        foreach (Renderer part in model)
+        {
+            if (!part.TryGetComponent(out MeshFilter filter) || filter.sharedMesh == null) continue;
+            Bounds b = filter.sharedMesh.bounds;
+            Matrix4x4 toItem = HeldCamera.worldToLocalMatrix * part.transform.localToWorldMatrix;
+            for (int i = 0; i < 8; i++)
+            {
+                Vector3 corner = toItem.MultiplyPoint3x4(b.center + Vector3.Scale(b.extents, new Vector3((i & 1) == 0 ? -1 : 1, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1)));
+                if (!found) body = new Bounds(corner, Vector3.zero);
+                else body.Encapsulate(corner);
+                found = true;
+            }
+        }
+        if (!found) return;
+        modelMiddle = body.center;
+        modelWidth = body.size.x * HeldCamera.lossyScale.x;
     }
 
     protected override void OnEnable()
@@ -91,18 +137,36 @@ public class SpectralCamera : HeldTool
     {
         base.OnDisable();
         if (current == this) current = null;
+        HideController(null);
     }
 
-    // Spectral vision stays on until the view has shut, so it never visibly drops out
+    // Leaving the eye in a headset keeps the viewfinder up while it shrinks into the camera
     protected override bool WantsRaised()
     {
         bool wasLooking = looking;
         bool raised = WantsLook();
-        shutting = !looking && (shutting || wasLooking);
-        return raised || shutting;
+        // Asked for and not already held to the eye, it's taken up there from the belt or hand, and put back after
+        autoRaised = Time.frameCount - requestedFrame <= 1 && !looking;
+        if (autoRaised)
+        {
+            raised = true;
+            if (Headset) looking = true;
+        }
+        if (wasLooking && !looking && Headset)
+        {
+            collapsing = true;
+            collapse = 0f;
+            collapseStart = Time.time;
+            startDistance = View != null ? Vector3.Distance(HeldCamera.TransformPoint(modelMiddle), View.transform.position) : 0f;
+        }
+        if (looking) collapsing = false;
+        return raised || collapsing;
     }
 
-    // In a headset, looking through means the eyepiece near the eye, aimed roughly where the head looks; it's judged by the hand, as the camera settles on the eye
+    protected override bool TakesOut => !Headset || autoRaised;
+
+    // In a headset, looking through means raising the controller that holds the camera up to the eyes, however it's turned; held out on a ray,
+    // the camera flies in from wherever it is. The controller decides, as the camera itself settles on the eye
     bool WantsLook()
     {
         if (!Held || View == null)
@@ -112,27 +176,31 @@ public class SpectralCamera : HeldTool
             return base.WantsRaised();
         }
         Transform head = View.transform;
-        Pose hand = motion != null ? motion.HandPose : new Pose(HeldCamera.position, HeldCamera.rotation);
         Vector3 eye = Vector3.Scale(eyepiece, HeldCamera.lossyScale);
-        float reach = Vector3.Distance(hand.position + hand.rotation * eye, head.position);
-        bool aimed = Vector3.Dot(hand.rotation * Vector3.forward, head.forward) >= lookAlignment;
-        looking = aimed && reach <= (looking ? stopDistance : lookDistance);
+        Vector3 toHand = item.firstInteractorSelecting.transform.position - head.position;
+        // Beside or in front of the face, not behind the head
+        bool upAtFace = Vector3.Dot(toHand.normalized, head.forward) > -0.3f;
+        looking = upAtFace && toHand.magnitude <= (looking ? stopDistance : lookDistance);
         if (looking) lookedThrough = true;
         if (motion != null) motion.EyePose = looking ? new Pose(head.position - head.rotation * eye, head.rotation) : (Pose?)null;
         return looking;
     }
 
-    // While looking through, the viewfinder points where the held camera does
-    protected override Quaternion Facing(Transform head) => Held ? HeldCamera.rotation : base.Facing(head);
+    // While looking through, the viewfinder is fixed dead ahead of the eyes from the first frame
+    protected override bool LockedToEyes => looking;
+
+    // Leaving the eye, it starts from there and eases after the head as it shrinks away
+    protected override Quaternion Facing(Transform head) => collapsing ? head.rotation : base.Facing(head);
 
     protected override void LayOut(float eased)
     {
         bool shown = eased > 0f;
         if (model != null)
         {
-            // At the eye (looked through, taken up from the keyboard, or held by an untracked hand) only its look is hidden, so it can still be grabbed
+            // At the eye (looked through, taken up from the keyboard, or held by an untracked hand) only its look is hidden, so it can still be grabbed.
+            // In a headset it shows again as soon as it leaves the eye, so the frame can shrink onto it
             bool atEye = View != null && Vector3.Distance(HeldCamera.position, View.transform.position) < 0.08f;
-            bool show = !shown && !atEye;
+            bool show = (Headset ? !looking : !shown) && !atEye;
             if (modelShown != show)
             {
                 modelShown = show;
@@ -153,85 +221,95 @@ public class SpectralCamera : HeldTool
                 if (hiddenHand != null) hiddenHand.Shown = false;
             }
         }
-        LayOutTip();
-        LayOutShutter();
+        PlaceTip(raiseTip, Held && !lookedThrough, HeldCamera.position + Vector3.up * 0.08f);
+        // Nothing on the holding controller, its laser, pointer or model, may show in front of the eyes while looking through
+        HideController(looking && InHand ? item.firstInteractorSelecting.transform.parent : null);
         if (viewfinder.gameObject.activeSelf != shown) viewfinder.gameObject.SetActive(shown);
-        // The frame only marks the change of vision in a headset, where it would feel stuck to the eyes
-        frame = shown && Headset ? Mathf.MoveTowards(frame, 0f, Time.deltaTime / Mathf.Max(frameFadeTime, 0.001f)) : 1f;
+        if (collapsing)
+        {
+            collapse = Mathf.Max(collapse, Travelled(), Mathf.Clamp01((Time.time - collapseStart) / Mathf.Max(collapseTime, 0.001f)));
+            if (collapse >= 1f) collapsing = false;
+        }
+
+        // How far the window has shrunk onto the camera, once it's left the eye in a headset
+        float leaving = Headset && !looking ? (collapsing ? collapse : 1f) : 0f;
+        revealLeft = 1f - Smooth(0.7f, 1f, leaving);
         if (!shown) return;
 
         Vector2 window = Direction(windowAngles * 0.5f, windowOnScreen);
         Material lensMaterial = lens.sharedMaterial;
-        float margin = Headset ? fullMargin : lensMaterial.GetFloat(MarginId);
+        float margin = fullMargin;
         float width = 2f * distance * window.x, height = 2f * distance * window.y;
         Vector3 size = new(width + 2f * margin * height, height * (1f + 2f * margin), 1f);
+        float shrunk = leaving;
+        size *= Mathf.Lerp(1f, modelWidth / Mathf.Max(width, 0.001f), shrunk);
         lens.transform.localScale = size;
         mask.transform.localScale = size;
-        viewfinder.localPosition = new Vector3(0f, Headset ? 0f : -(1f - eased) * raiseDrop * height, distance);
+        viewfinder.SetLocalPositionAndRotation(new Vector3(0f, Headset ? 0f : -(1f - eased) * raiseDrop * height, distance), Quaternion.identity);
+        if (shrunk > 0f && View != null && HeldCamera != null)
+        {
+            // From in front of the eyes onto the camera's body, facing the eyes all the way
+            Vector3 to = HeldCamera.TransformPoint(modelMiddle);
+            Quaternion facing = Quaternion.LookRotation(to - View.transform.position, Vector3.up);
+            viewfinder.SetPositionAndRotation(Vector3.Lerp(viewfinder.position, to, shrunk), Quaternion.Slerp(viewfinder.rotation, facing, shrunk));
+        }
 
-        lensBlock.SetFloat(OpenId, eased);
+        // Fades out over the camera as it finishes shrinking
+        lensBlock.SetFloat(OpenId, eased * revealLeft);
         lensBlock.SetFloat(MarginId, margin);
-        lensBlock.SetFloat(FrameId, Mathf.SmoothStep(0f, 1f, frame));
+        lensBlock.SetFloat(FrameId, 1f);
+        // Black past the frame, clearing as the window shrinks into the camera in a headset so the room shows around it
+        lensBlock.SetFloat(SurroundId, 1f - Smooth(0.15f, 0.6f, leaving));
         lens.SetPropertyBlock(lensBlock);
         maskBlock.SetFloat(MarginId, margin);
         maskBlock.SetFloat(RadiusId, lensMaterial.GetFloat(RadiusId));
         mask.SetPropertyBlock(maskBlock);
     }
 
-    // Leaving the eye shuts the view like eyelids, holds it dark while the vision drops away, then lets it open again
-    void LayOutShutter()
+    // How far the camera has come from the eye back toward where the hand holds it, from 0 to 1
+    float Travelled()
     {
-        if (shutter == null)
-        {
-            shutting = false;
-            return;
-        }
-        if (shutting)
-        {
-            shut = Mathf.MoveTowards(shut, 1f, Time.deltaTime / Mathf.Max(shutTime, 0.001f));
-            if (shut >= 1f)
-            {
-                shutting = false;
-                dark = darkTime;
-            }
-        }
-        else if (dark > 0f) dark -= Time.deltaTime;
-        else shut = Mathf.MoveTowards(shut, 0f, Time.deltaTime / Mathf.Max(reopenTime, 0.001f));
-
-        bool shown = shut > 0f;
-        if (shutter.enabled != shown) shutter.enabled = shown;
-        if (!shown) return;
-        shutterBlock.SetFloat(ShutId, Mathf.SmoothStep(0f, 1f, shut));
-        shutter.SetPropertyBlock(shutterBlock);
+        if (motion == null || View == null || HeldCamera == null) return 0f;
+        Vector3 eye = View.transform.position;
+        Pose hand = motion.HandPose;
+        float now = Vector3.Distance(HeldCamera.TransformPoint(modelMiddle), eye);
+        // Back to the hand, or to the belt when it was taken up by itself
+        Vector3 to = item.firstInteractorSelecting is UnityEngine.XR.Interaction.Toolkit.Interactors.XRSocketInteractor slot ? slot.transform.position
+            : hand.position + hand.rotation * Vector3.Scale(modelMiddle, HeldCamera.lossyScale);
+        float rest = Vector3.Distance(to, eye);
+        return Mathf.Clamp01((now - startDistance) / Mathf.Max(rest - startDistance, 0.05f));
     }
 
-    // The tip shows by the camera in a headset until the player first looks through it, turned to face them
-    void LayOutTip()
+    // Eases from 0 to 1 as x goes from a to b
+    static float Smooth(float a, float b, float x)
     {
-        if (raiseTip == null) return;
-        bool shown = Held && !lookedThrough;
-        if (raiseTip.gameObject.activeSelf != shown) raiseTip.gameObject.SetActive(shown);
-        if (shown && View != null) raiseTip.transform.rotation = Quaternion.LookRotation(raiseTip.transform.position - View.transform.position, Vector3.up);
+        float t = Mathf.Clamp01((x - a) / (b - a));
+        return t * t * (3f - 2f * t);
     }
 
-    // Small text above the camera, in the same font as the icon hints
-    TMP_Text CreateTip(Transform parent)
+    // Hides what a controller draws, or shows it all again when given none; the camera itself is left alone
+    void HideController(Transform controller)
     {
-        TextMeshPro tip = new GameObject("Raise Tip", typeof(TextMeshPro)).GetComponent<TextMeshPro>();
-        tip.transform.SetParent(parent, false);
-        tip.transform.localPosition = new Vector3(0f, 0.08f, 0f);
-        if (Hint != null)
+        if (controller == hiddenController) return;
+        if (hiddenLine != null) hiddenLine.SetActive(true);
+        foreach (Renderer part in hiddenParts)
+            if (part != null) part.enabled = true;
+        hiddenLine = null;
+        hiddenParts.Clear();
+        hiddenController = controller;
+        if (controller == null) return;
+
+        CurveVisualController laser = controller.GetComponentInChildren<CurveVisualController>(true);
+        if (laser != null && laser.gameObject.activeSelf)
         {
-            tip.font = Hint.font;
-            tip.fontSharedMaterial = Hint.fontSharedMaterial;
-            tip.color = Hint.color;
+            hiddenLine = laser.gameObject;
+            hiddenLine.SetActive(false);
         }
-        tip.text = "Raise to your eye";
-        tip.fontSize = 0.15f;
-        tip.alignment = TextAlignmentOptions.Center;
-        tip.textWrappingMode = TextWrappingModes.NoWrap;
-        tip.rectTransform.sizeDelta = new Vector2(0.3f, 0.05f);
-        tip.gameObject.SetActive(false);
-        return tip;
+        foreach (Renderer part in controller.GetComponentsInChildren<Renderer>())
+        {
+            if (!part.enabled || part.transform.IsChildOf(HeldCamera)) continue;
+            part.enabled = false;
+            hiddenParts.Add(part);
+        }
     }
 }

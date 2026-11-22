@@ -59,15 +59,8 @@ public class Notebook : HeldTool
     protected override void LayOut(float eased)
     {
         if (viewfinder != null) viewfinder.localPosition = new Vector3(0f, -(1f - eased) * raiseDrop, distance);
-        // Open while read: taken up from the keyboard, or held in a hand or ray close to the eyes, but not over a belt slot
-        if (book != null) book.Open = TakenOut || InHand && !OverBelt() && NearEyes();
-    }
-
-    bool OverBelt()
-    {
-        foreach (var slot in item.interactorsHovering)
-            if (slot is BeltSlot) return true;
-        return false;
+        // Open while read: taken up from the keyboard, or held in a hand or ray close to the eyes, even passing a belt slot
+        if (book != null) book.Open = TakenOut || InHand && NearEyes();
     }
 
     // Whether the book is close enough to the eyes to read, a little further once it's open so it doesn't flicker at the edge

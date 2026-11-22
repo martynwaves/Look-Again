@@ -1,11 +1,5 @@
 fileFormatVersion: 2
 guid: e2510ac76f21ae845a9d0433894abbff
-NativeFormatImporter:
-  externalObjects: {}
-  mainObjectFileID: 2100000
-  userData: 
-  assetBundleName: 
-  assetBundleVariant: 
 AssetOrigin:
   serializedVersion: 1
   productId: 118744
@@ -13,3 +7,9 @@ AssetOrigin:
   packageVersion: 1.0
   assetPath: Assets/JJ_InteriorDoorPack_V1/Materials/mat_door2_white.mat
   uploadId: 246164
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
