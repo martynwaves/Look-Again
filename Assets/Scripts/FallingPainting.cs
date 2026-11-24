@@ -17,6 +17,16 @@ public class FallingPainting : MonoBehaviour
     [Tooltip("Seconds the painting takes to topple over once it hits the floor.")]
     [SerializeField] float toppleTime = 0.55f;
 
+    [Header("Sound")]
+    [Tooltip("Plays the painting's sounds, from the painting.")]
+    [SerializeField] AudioSource sound;
+
+    [Tooltip("Slipping off its nail.")]
+    [SerializeField] AudioClip slipClip;
+
+    [Tooltip("Hitting the floor.")]
+    [SerializeField] AudioClip landClip;
+
     public bool Fallen { get; private set; }
 
     const float UnhookTime = 0.15f, UnhookDrop = 0.02f, Roll = 4f, LeanOut = 8f, Out = 0.05f, BounceTime = 0.2f, Bounce = 4f;
@@ -44,7 +54,11 @@ public class FallingPainting : MonoBehaviour
         }
 
         if (elapsed > Duration) return;
+        float before = elapsed;
         elapsed += Time.deltaTime;
+        if (before < 0f && elapsed >= 0f) Sfx.PlayOneShot(sound, slipClip);
+        float landed = UnhookTime + DropTime;
+        if (before < landed && elapsed >= landed) Sfx.PlayOneShot(sound, landClip);
         if (elapsed >= 0f) Pose(Mathf.Min(elapsed, Duration));
     }
 

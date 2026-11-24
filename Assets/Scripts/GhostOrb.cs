@@ -38,6 +38,13 @@ public class GhostOrb : MonoBehaviour
     [Tooltip("Called once the orb is dispelled, for whatever it was holding back.")]
     [SerializeField] UnityEvent dispelled;
 
+    [Header("Sound")]
+    [Tooltip("A looping hum, rising as the orb is dispelled and dying away with it. Keep its source off the orb, which switches itself off once gone.")]
+    [SerializeField] AudioSource hum;
+
+    [Tooltip("Played as the orb bursts. Keep its source off the orb too.")]
+    [SerializeField] AudioSource dispelSound;
+
     Lantern lantern;
     Transform[] grounded;
     Vector3[] groundedScale;
@@ -93,6 +100,7 @@ public class GhostOrb : MonoBehaviour
             if (progress >= 1f) Dispel();
         }
         else gone = Mathf.MoveTowards(gone, 1f, dt / Mathf.Max(fadeTime, 0.001f));
+        Sfx.Loop(hum, 1f - gone, 1f + progress * 0.4f, 3f);
 
         // The camera comes up while it's being dispelled, and stays until the last motes have settled
         bool finished = done && gone >= 1f && (motes == null || !motes.IsAlive(true));
@@ -109,6 +117,7 @@ public class GhostOrb : MonoBehaviour
         if (finished)
         {
             if (motes != null) Destroy(motes.gameObject);
+            Sfx.Stop(hum);
             gameObject.SetActive(false);
         }
         // Shown through the camera, or whenever the lantern is held out close by
@@ -131,6 +140,7 @@ public class GhostOrb : MonoBehaviour
     {
         done = true;
         progress = 1f;
+        Sfx.Play(dispelSound, 1f, 0f);
         if (motes != null)
         {
             motes.transform.SetParent(transform, true);

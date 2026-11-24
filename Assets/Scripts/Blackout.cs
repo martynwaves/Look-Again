@@ -16,6 +16,13 @@ public class Blackout : MonoBehaviour
     [Tooltip("Seconds they take to come back.")]
     [SerializeField] float inTime = 0.5f;
 
+    [Header("Sound")]
+    [Tooltip("Played as the lights go out.")]
+    [SerializeField] AudioSource outSound;
+
+    [Tooltip("Played as they come back.")]
+    [SerializeField] AudioSource backSound;
+
     Light[] lights;
     float[] intensities;
     Renderer[] glowing;
@@ -63,7 +70,10 @@ public class Blackout : MonoBehaviour
     // Starts the lights going out, or coming back
     public static void Fade(bool on)
     {
-        if (instance != null) instance.target = on ? 1f : 0f;
+        if (instance == null) return;
+        float to = on ? 1f : 0f;
+        if (instance.target != to) Sfx.Play(on ? instance.backSound : instance.outSound, 1f, 0f);
+        instance.target = to;
     }
 
     void Update()

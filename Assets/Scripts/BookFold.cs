@@ -21,6 +21,10 @@ public class BookFold : MonoBehaviour, IStowedShape
     [Tooltip("How many strips the spine is cut into so it bends smoothly.")]
     [SerializeField] int spineStrips = 16;
 
+    [Header("Sound")]
+    [Tooltip("Pages turning as the book opens, and the same, softer, as it shuts.")]
+    [SerializeField] AudioSource foldSound;
+
     public bool Open { get; set; }
 
     // The shut book's middle, which its collider fits
@@ -40,6 +44,7 @@ public class BookFold : MonoBehaviour, IStowedShape
 
     // How far the book is shut, from 0 (open) to 1 (shut)
     float fold = 1f, shownFold = -1f;
+    bool heardOpen;
     BoxCollider box;
     Vector3 pivot;
     Half left, right;
@@ -88,6 +93,12 @@ public class BookFold : MonoBehaviour, IStowedShape
 
     void Update()
     {
+        if (Open != heardOpen)
+        {
+            heardOpen = Open;
+            if (Open) Sfx.Play(foldSound, 1f, 0.04f);
+            else Sfx.PlayOneShot(foldSound, foldSound != null ? foldSound.clip : null, 0.55f);
+        }
         fold = Mathf.MoveTowards(fold, Open ? 0f : 1f, Time.deltaTime / Mathf.Max(foldTime, 0.001f));
         if (fold != shownFold) Bend(Ease(fold) * 180f);
         shownFold = fold;

@@ -26,6 +26,9 @@ public class VaseSpot : MonoBehaviour
     [Tooltip("Ghostly dust around the silhouette, which stops once the vase is back.")]
     [SerializeField] ParticleSystem dust;
 
+    [Tooltip("Played as the vase settles into place.")]
+    [SerializeField] AudioSource settleSound;
+
     public bool Filled { get; private set; }
 
     Rigidbody body;
@@ -88,5 +91,6 @@ public class VaseSpot : MonoBehaviour
         fromPosition = vase.transform.position;
         fromRotation = vase.transform.rotation;
         if (dust != null) dust.Stop(true, ParticleSystemStopBehavior.StopEmitting);
+        Sfx.Play(settleSound);
     }
 }

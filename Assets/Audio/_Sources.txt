@@ -1,0 +1,33 @@
+Look Again sound effects: where each file comes from.
+All source recordings are CC0 1.0 (public domain): free to use, change and ship, commercially too, with no credit required.
+They were taken from the GitHub collection https://github.com/lavenderdotpet/CC0-Public-Domain-Sounds, which gathers:
+  Kenney.nl packs (RPG Audio, Impact Sounds, Sci-fi Sounds, Voiceover Pack), Ben Burnes / Abstractionauts sample packs and micro packs
+  (Toolbox Rummaging, Keyboard Sounds, Smol Mechanisms, Books Paper Writing, Retail Therapy, Novice Cello, Chairmat, Record Fuzzies,
+  NazdyNate Electromagnetic Sounds), and the "100 CC0 SFX" / "30 CC0 SFX loops" packs.
+Every clip was trimmed, levelled and turned into Ogg Vorbis; loops were crossfaded so they repeat without a seam.
+
+Interactions/Door Creak.ogg        100-CC0-SFX/door_02.ogg
+Interactions/Door Rattle.ogg       BB Retail Therapy/Rattling Cheap Wood 2.wav
+Interactions/Door Shut.ogg         100-CC0-SFX/door_close_01.ogg
+Interactions/Lantern Crank.ogg     bb Smol Mechanisms/Cable Coiler 2.wav
+Interactions/Lantern Flame.ogg     Micro Pack Record Fuzzies/Ambient Noise 2.wav (filtered)
+Interactions/Camera Shutter.ogg    bb Keyboard Sounds/Model D - Switch 5.wav
+Interactions/Notebook Page.ogg     bb Books, Paper, Writing/Page Turn 1.wav
+Interactions/Belt Stow.ogg         kenney_rpgaudio/clothBelt.ogg
+Puzzles/Vase Settle.ogg            100-cc0-sfx-2/sfx100v2_glass_01.ogg
+Puzzles/Painting Slip.ogg          100-CC0-wood-metal-SFX/wood_squeak_02.ogg
+Puzzles/Painting Land.ogg          kenney_impactsounds/impactWood_heavy_000.ogg
+Puzzles/Lever Book Catch.ogg       100-CC0-wood-metal-SFX/lock_open_01.ogg
+Puzzles/Front Doors Open.ogg       100-CC0-SFX/door_01.ogg
+Spirit/Orb Hum.ogg                 NazdyNate - Computer Monitor 1.wav
+Spirit/Orb Dispel.ogg              Micro Pack Chairmat/Multi Woom 1.wav
+Spirit/Spirit Drone.ogg            NazdyNate - Cell Reception 1.wav
+Spirit/Spirit Catch.ogg            Kenney sci-fi-sounds/explosionCrunch_004.ogg
+Spirit/Lights Out.ogg              bb Toolbox Rummaging/Big Thump.wav
+Spirit/Lights Back.ogg             NazdyNate - Computer Tower 1.wav (first 4 s)
+Ambience/Room Tone.ogg             30-cc0-sfx-loops/ambient_03.ogg
+Ambience/Stacks Creak.ogg          BB Retail Therapy/Squeaky Rustling.wav
+Ambience/Whisper.ogg               Kenney voiceover pack, Female/you_lose.ogg, made into a whisper (noise through the voice's formants) and reversed
+Ambience/TV Static.ogg             Micro Pack Record Fuzzies/Good Clean Noise.wav
+Ambience/Watcher Sting.ogg         bb Novice Cello/C2 - Sforzando 1.wav
+Ambience/Phone Ring.ogg            kenney_impactsounds/impactBell_heavy_000.ogg, re-struck 20 times a second like an old phone's bell

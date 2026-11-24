@@ -92,6 +92,13 @@ public class LanternLight : MonoBehaviour
     [Tooltip("How much bigger the flame flares for a moment at each new level, as a fraction of its size.")]
     [SerializeField] float levelFlameSurge = 0.6f;
 
+    [Header("Sound")]
+    [Tooltip("A looping ratchet while the cap is wound, faster the faster it turns.")]
+    [SerializeField] AudioSource crankSound;
+
+    [Tooltip("A quiet looping crackle while lit, rising and falling with the light.")]
+    [SerializeField] AudioSource flameSound;
+
     public float Charge => charge;
 
     // Degrees the cap has turned in all, either way
@@ -105,7 +112,7 @@ public class LanternLight : MonoBehaviour
     Quaternion lastTurn;
     Vector3 lastReach;
     Color lampColor;
-    float noiseSeed, dipUntil, nextDip, dipDepth, sparksDue, fuelDue, flash, windingUntil;
+    float noiseSeed, dipUntil, nextDip, dipDepth, sparksDue, fuelDue, flash, windingUntil, woundThisFrame;
 
     void Awake()
     {
@@ -163,6 +170,7 @@ public class LanternLight : MonoBehaviour
     {
         if (cap != null) cap.localRotation *= Quaternion.Euler(0f, degrees, 0f);
         TotalWound += Mathf.Abs(degrees);
+        woundThisFrame += Mathf.Abs(degrees);
         // The charge holds while the cap turns, so a full turn always fills a full level; the grace spans a hand turning back between twists
         if (Mathf.Abs(degrees) > 0.01f) windingUntil = Time.time + 0.3f;
         int before = Level(charge);
@@ -210,6 +218,11 @@ public class LanternLight : MonoBehaviour
         if (Time.time >= windingUntil) charge = Mathf.Max(0f, charge - Time.deltaTime / Mathf.Max(lastsFor, 0.01f));
         // Dims steadily as it runs down, faster near the end
         float level = (charge > 0f ? Mathf.Pow(charge, 0.6f) * Flicker() : 0f) * Blackout.Level;
+        // The ratchet follows how fast the cap turned; the crackle follows the light, guttering with it
+        float cranking = Mathf.InverseLerp(30f, 400f, Time.deltaTime > 0f ? woundThisFrame / Time.deltaTime : 0f);
+        woundThisFrame = 0f;
+        Sfx.Loop(crankSound, cranking, Mathf.Lerp(0.85f, 1.2f, cranking), 20f);
+        Sfx.Loop(flameSound, level, 1f, 4f);
         // A new level flares brighter in a lighter royal blue, fading quickly back
         flash = Mathf.MoveTowards(flash, 0f, Time.deltaTime / Mathf.Max(levelFlashTime, 0.01f));
         float poof = flash * flash;

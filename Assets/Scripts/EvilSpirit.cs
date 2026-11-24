@@ -59,6 +59,13 @@ public class EvilSpirit : MonoBehaviour
     [Tooltip("Seconds it waits at its source after the lights come back, before setting out again.")]
     [SerializeField] float restTime = 3f;
 
+    [Header("Sound")]
+    [Tooltip("A looping drone from the spirit while it hunts, higher as it nears. Heard through walls, as it moves through them.")]
+    [SerializeField] AudioSource drone;
+
+    [Tooltip("Played the moment it catches the player.")]
+    [SerializeField] AudioSource caughtSound;
+
     Player player;
     Material look;
     Renderer dreadQuad;
@@ -151,6 +158,7 @@ public class EvilSpirit : MonoBehaviour
     IEnumerator Catch()
     {
         caught = true;
+        Sfx.Play(caughtSound, 1f, 0f);
         Blackout.Fade(false);
         source.Undo();
         yield return new WaitForSeconds(0.35f);
@@ -193,6 +201,7 @@ public class EvilSpirit : MonoBehaviour
             dreadQuad.enabled = dreadStrength > 0.001f;
         }
         Shiver(dreadStrength);
+        Sfx.Loop(drone, presence, Mathf.Lerp(0.9f, 1.25f, dreadStrength), presence > 0f ? 2f : 12f);
 
         if (trail == null || !trail.enabled) return;
         Vector3 from = transform.position, to = source.Middle;

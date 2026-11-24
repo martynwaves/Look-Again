@@ -172,6 +172,9 @@ public class BeltSlot : XRSocketInteractor
     [Tooltip("Seconds a taken item takes to glide from where it was into place.")]
     [SerializeField] float glideTime = 0.45f;
 
+    [Tooltip("Leather and cloth as an item goes onto the belt or comes off it.")]
+    [SerializeField] AudioSource stowSound;
+
     // Whether items sit by their middle rather than their pivot. Off for the slot that holds the notebook up to read, which shows it by its spine
     public bool HoldsByMiddle { get; set; } = true;
 
@@ -207,6 +210,8 @@ public class BeltSlot : XRSocketInteractor
         rest = Rest(args.interactableObject);
         glided = 0f;
         base.OnSelectEntering(args);
+        // Not for the items the belt starts the game holding
+        if (Time.timeSinceLevelLoad > 1f) Sfx.Play(stowSound, 1f, 0.08f);
         // Smoothing that softens an item in the hand would leave it trailing behind the belt as the player walks
         if (args.interactableObject is XRGrabInteractable grabbed && !smoothing.ContainsKey(grabbed))
         {
@@ -228,6 +233,7 @@ public class BeltSlot : XRSocketInteractor
     protected override void OnSelectExited(SelectExitEventArgs args)
     {
         base.OnSelectExited(args);
+        if (Time.timeSinceLevelLoad > 1f) Sfx.Play(stowSound, 1.1f, 0.08f);
         if (args.interactableObject is XRGrabInteractable released && smoothing.Remove(released, out var was))
         {
             released.smoothPosition = was.position;

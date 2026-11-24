@@ -23,6 +23,9 @@ public class LeverBook : MonoBehaviour
     [Tooltip("Seconds between the book catching and the door opening.")]
     [SerializeField] float doorDelay = 0.5f;
 
+    [Tooltip("Played as the book tips out and catches.")]
+    [SerializeField] AudioSource catchSound;
+
     public bool Pulled { get; private set; }
 
     XRSimpleInteractable interactable;
@@ -46,6 +49,7 @@ public class LeverBook : MonoBehaviour
         if (Pulled) return;
         Pulled = true;
         pulledFor = 0f;
+        Sfx.Play(catchSound, 1f, 0f);
     }
 
     void Update()

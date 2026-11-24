@@ -69,6 +69,10 @@ public class SpectralCamera : HeldTool
     [Tooltip("As the camera leaves the eye in a headset, the framed window shrinks onto it in step with its travel back to the hand. Seconds it takes at most, should the camera not get there.")]
     [SerializeField] float collapseTime = 0.5f;
 
+    [Header("Sound")]
+    [Tooltip("A click as the view through the camera opens, and a lower one as it closes.")]
+    [SerializeField] AudioSource shutterSound;
+
     MaterialPropertyBlock lensBlock, maskBlock;
     TMP_Text raiseTip;
     Renderer[] model;
@@ -80,7 +84,7 @@ public class SpectralCamera : HeldTool
     readonly System.Collections.Generic.List<Renderer> hiddenParts = new();
     Vector3 modelMiddle;
     float modelWidth = 0.12f, collapse, collapseStart, startDistance, revealLeft = 1f;
-    bool looking, collapsing, lookedThrough, autoRaised, modelShown = true;
+    bool looking, collapsing, lookedThrough, autoRaised, modelShown = true, wasUp;
 
     public SpectralCamera() : base("Spectral Camera", "<Keyboard>/f") { }
 
@@ -160,6 +164,9 @@ public class SpectralCamera : HeldTool
             startDistance = View != null ? Vector3.Distance(HeldCamera.TransformPoint(modelMiddle), View.transform.position) : 0f;
         }
         if (looking) collapsing = false;
+        bool up = Headset ? looking : raised;
+        if (up != wasUp) Sfx.Play(shutterSound, up ? 1f : 0.85f, 0.03f);
+        wasUp = up;
         return raised || collapsing;
     }
 

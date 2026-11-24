@@ -36,6 +36,22 @@ public class Door : MonoBehaviour
     [Tooltip("Let go within this many degrees of shut, swinging back or coming to rest, the door clicks shut.")]
     [SerializeField] float latchAngle = 10f;
 
+    [Header("Sound")]
+    [Tooltip("A looping creak, louder and higher the faster the door turns.")]
+    [SerializeField] AudioSource creak;
+
+    [Tooltip("Plays the door's one-off sounds below.")]
+    [SerializeField] AudioSource knock;
+
+    [Tooltip("Pulled while locked.")]
+    [SerializeField] AudioClip rattleClip;
+
+    [Tooltip("Clicking shut in its frame.")]
+    [SerializeField] AudioClip shutClip;
+
+    [Tooltip("Swung open by a script such as a hidden lever, played instead of the creak for that swing.")]
+    [SerializeField] AudioClip openClip;
+
     // Whether the player has yet grabbed any door
     public static bool EverGrabbed { get; private set; }
 
@@ -51,7 +67,8 @@ public class Door : MonoBehaviour
     IXRSelectInteractor holder;
     Vector3 heldPoint;
     float angle, speed, grabAngle, handTurn, lastHand;
-    float fromAngle, toAngle, swung = 1f, rattle;
+    float fromAngle, toAngle, swung = 1f, rattle, heardAngle;
+    bool openedByScript, wasOpen;
 
     void Awake()
     {
@@ -88,9 +105,10 @@ public class Door : MonoBehaviour
         HandAngle(holder.transform.TransformPoint(heldPoint), out lastHand);
         if (locked)
         {
-            rattle = rattleTime;
+            Rattle();
             return;
         }
+        openedByScript = false;
         swung = 1f;
         speed = 0f;
         grabAngle = angle;
@@ -102,6 +120,13 @@ public class Door : MonoBehaviour
         holder = null;
         speed = Mathf.Clamp(speed, -360f, 360f);
         Latch();
+    }
+
+    // Shakes the locked door in its frame
+    void Rattle()
+    {
+        rattle = rattleTime;
+        Sfx.PlayOneShot(knock, rattleClip, 1f, 0.08f);
     }
 
     // Let go near shut, heading back or at rest, the door pulls the last bit closed
@@ -133,6 +158,8 @@ public class Door : MonoBehaviour
         fromAngle = angle;
         toAngle = Mathf.Approximately(away, 0f) ? other : away;
         swung = 0f;
+        openedByScript = true;
+        Sfx.PlayOneShot(knock, openClip, 1f, 0f);
     }
 
     // Whether turning by the first angle takes the door's middle further from the point than turning by the second does
@@ -156,7 +183,7 @@ public class Door : MonoBehaviour
 
     void Update()
     {
-        if (holder == null && swung >= 1f && speed == 0f && rattle <= 0f) return;
+        if (holder == null && swung >= 1f && speed == 0f && rattle <= 0f && (creak == null || !creak.isPlaying)) return;
         float dt = Time.deltaTime;
 
         if (holder != null && HandAngle(holder.transform.TransformPoint(heldPoint), out float hand))
@@ -170,7 +197,7 @@ public class Door : MonoBehaviour
             // Pulling at a locked door keeps it rattling
             if (Mathf.Abs(handTurn) > rattlePull)
             {
-                rattle = rattleTime;
+                Rattle();
                 handTurn = 0f;
             }
         }
@@ -187,6 +214,7 @@ public class Door : MonoBehaviour
             float span = Mathf.Abs(toAngle - fromAngle) / Mathf.Max(Mathf.Max(maxAngle, -minAngle), 1f);
             swung = Mathf.MoveTowards(swung, 1f, dt / Mathf.Max(swingTime * span, 0.001f));
             angle = Mathf.Lerp(fromAngle, toAngle, Mathf.SmoothStep(0f, 1f, swung));
+            if (swung >= 1f) openedByScript = false;
         }
         else if (speed != 0f)
         {
@@ -212,5 +240,14 @@ public class Door : MonoBehaviour
             shake = Mathf.Sin(Time.time * 70f) * rattleAngle * rattle / Mathf.Max(rattleTime, 0.001f);
         }
         transform.localRotation = closed * Quaternion.Euler(0f, angle + shake, 0f);
+
+        // The creak follows how fast the door turns; a scripted swing with its own sound doesn't creak as well
+        float turning = dt > 0f ? Mathf.Abs(angle - heardAngle) / dt : 0f;
+        heardAngle = angle;
+        float creaking = openedByScript && openClip != null ? 0f : Mathf.InverseLerp(4f, 90f, turning);
+        Sfx.Loop(creak, creaking, Mathf.Lerp(0.85f, 1.15f, creaking));
+        // Back in its frame from open, it clicks shut
+        if (angle == 0f && wasOpen) Sfx.PlayOneShot(knock, shutClip);
+        wasOpen = Mathf.Abs(angle) > 1f;
     }
 }
